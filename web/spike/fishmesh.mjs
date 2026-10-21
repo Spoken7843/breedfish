@@ -121,6 +121,30 @@ export function buildFish(gl, look) {
 }
 
 /**
+ * Bounds of the fish at rest (straight spine) in model space: +x toward the snout, y up, with the origin
+ * on 40% of the body like the swimming spine. Used to frame thumbnails and to pick fish on screen.
+ */
+export function restExtent(look) {
+  const Lb = look.length, T = look.tail, Lt = T.length * Lb;
+  const hd = u => profileAt(look.profile.dorsal, u) * Lb, hv = u => profileAt(look.profile.ventral, u) * Lb;
+  const inFin = (F, u) => u >= F.u0 && u <= F.u1;
+  let sMax = Lb, yMin = 0, yMax = 0;
+  for (let i = 0; i <= 24; i++) {
+    const u = i / 24, b = bend(look, u);
+    yMax = Math.max(yMax, b + hd(u) * 0.94 + (inFin(look.dorsalFin, u) ? look.dorsalFin.height * Lb : 0));
+    yMin = Math.min(yMin, b - hv(u) * 0.94 - (inFin(look.anal, u) ? look.anal.height * Lb * (look.anal.gonopodium ? 0.35 : 1) : 0));
+  }
+  const hb = hd(1) * 0.92, yPed = bend(look, 1);
+  for (let k = 0; k <= 40; k++) {
+    const r = k / 20 - 1, ray = caudalRay(T.shape, r), ang = ray.ang * (T.spread ?? 1), L = ray.len * Lt;
+    const s = Lb * 0.98 + L * Math.cos(ang);
+    const y = yPed + r * hb * 0.8 + L * Math.sin(ang) + ray.lift * Lt * (0.6 + 0.4 * (1 - r) / 2);
+    sMax = Math.max(sMax, s); yMin = Math.min(yMin, y); yMax = Math.max(yMax, y);
+  }
+  return { xMin: 0.4 * Lb - sMax, xMax: 0.4 * Lb, yMin, yMax };
+}
+
+/**
  * Integrate the swimming spine: a travelling wave whose amplitude grows toward the tail, continued
  * into the caudal fin. `phase` is the integrated tail-beat phase, `ampScale` follows the swimming
  * effort and `turn` (rad/s of yaw) curls the body into the turn. Output per sample:

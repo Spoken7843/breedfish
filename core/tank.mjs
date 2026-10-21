@@ -385,6 +385,36 @@ export function breedAndWait(species, tank, femaleId, maleId, { maxWeeks = 10 } 
 // ---------- the breeder's knowledge ----------
 
 /** Remove fish by the breeder's choice (they stay in the pedigree). */
+/**
+ * Quick mode: a cross that gives grown offspring at once. No time passes, no sperm is stored and the
+ * father is certain; offspring with an embryo or fry lethal simply never reach adulthood, and a sterile
+ * parent gives nothing. `count` is the number of embryos; deterministic by the room seed and brood number.
+ */
+export const QUICK_TANKS = [{ id: 'colecao', name: 'Coleção', capacity: 100000, tempC: 26, food: 'normal' }];
+export function quickCross(species, tank, femaleId, maleId, { count = 20, ageDays = 150 } = {}) {
+  const mother = findAlive(tank, femaleId), father = findAlive(tank, maleId);
+  if (!mother || !father) return { ok: false, reason: 'escolha uma mãe e um pai' };
+  if (sexOf(mother) !== 'female' || sexOf(father) !== 'male') return { ok: false, reason: 'precisa de uma fêmea e um macho' };
+  if (!Number.isSafeInteger(count) || count < 1 || count > 200) throw RangeError('invalid brood size');
+  const broodNo = ++tank.broods;
+  const rng = rngFromSeed(deriveSeed(tank.seed, `quick:${broodNo}:${femaleId}:${maleId}`));
+  const out = { ok: true, broodNo, mother: mother.id, father: father.id, born: [], embryosLost: 0, fryLost: 0, sterile: false };
+  if (genetic(species, mother).sterile || genetic(species, father).sterile) { out.sterile = true; return out; }
+  for (let i = 0; i < count; i++) {
+    const kid = offspring(species, mother, father, rng, `N${broodNo}-tmp${i}`);
+    const g = genetic(species, kid);
+    if (g.embryoLethal) { out.embryosLost++; continue; }
+    if (g.fryLethal) { out.fryLost++; continue; }
+    kid.id = `N${broodNo}-${String(out.born.length + 1).padStart(2, '0')}`;
+    kid.growth = 1;
+    addFish(species, tank, kid, ageDays, mother.tankId);
+    out.born.push(kid);
+  }
+  mother.matedWith = [...new Set([...mother.matedWith, father.id])];
+  mother.lastBirthDay = tank.day;
+  return out;
+}
+
 export function cull(tank, ids) {
   const set = new Set(ids), removed = [];
   tank.alive = tank.alive.filter(f => {

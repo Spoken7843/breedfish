@@ -135,6 +135,68 @@
   .more-box select, .more-box textarea { width: 100%; min-width: 0; }
   .fish-list details.card-more > summary { cursor: pointer; color: var(--gold); font-size: 11px; margin-top: 6px; }
   .guide.new > summary { color: var(--gold-ink); background: var(--gold); padding: 6px 8px; margin: -8px -10px; }
+  /* pick a fish: the tank stays in view, a ring follows the picked fish, the bar under it says who it is */
+  .stage-wrap { position: sticky; top: 10px; z-index: 4; container-type: inline-size; }
+  .stage-box { position: relative; }
+  #stage { touch-action: manipulation; }
+  .pick-ring[hidden], .fish-tag[hidden], .thumb[hidden], .event[hidden] { display: none !important; }
+  .pick-ring { position: absolute; left: 0; top: 0; border: 1.5px solid var(--gold); border-radius: 50%; box-shadow: 0 0 0 1px #0007, 0 0 16px color-mix(in srgb, var(--gold) 40%, transparent); pointer-events: none; transform-origin: 50% 50%; }
+  .fish-tag { position: absolute; left: 0; top: 0; pointer-events: none; font: 600 11px system-ui, sans-serif; color: #182b23; background: var(--gold); padding: 2px 7px; border-radius: 2px; white-space: nowrap; box-shadow: 0 2px 8px #0008; }
+  .fish-tag.soft { background: #0b1d1ee0; color: #e4decf; font-weight: 500; }
+  .pick-bar { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 6px 10px; align-items: center; padding: 8px 10px; border-top: 1px solid var(--line); font-family: system-ui, sans-serif; min-height: 58px; }
+  .pick-bar:not(.on) { grid-template-columns: minmax(0, 1fr); }
+  .pick-bar .thumb { width: 76px; height: 44px; cursor: default; }
+  .pick-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .pick-info strong { font: 500 14px Georgia, serif; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pick-info span { font-size: 11px; line-height: 1.4; color: #a6b09e; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .pick-bar:not(.on) .pick-info strong { font: 600 12px system-ui, sans-serif; color: var(--gold); }
+  .pick-actions { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 6px; }
+  .pick-actions:empty { display: none; }
+  .pick-actions button { padding: 7px 10px; }
+  .pick-actions .close { margin-left: auto; font-size: 13px; padding: 5px 11px; }
+  @container (min-width: 620px) {
+    .pick-bar.on { grid-template-columns: auto minmax(0, 1fr) auto; }
+    .pick-actions { grid-column: auto; flex-wrap: nowrap; }
+  }
+  .thumb { display: block; flex: none; width: 84px; height: 49px; object-fit: cover; background: #132b28; border: 1px solid var(--line); border-radius: 2px; cursor: pointer; }
+  .thumb.sm { width: 58px; height: 34px; }
+  .fish-head strong { flex: 1; min-width: 0; }
+  .fish-list { max-height: none; overflow: visible; }
+  .fish-list li.picked { border-color: var(--gold); box-shadow: inset 0 0 0 1px var(--gold); }
+  .fish-list li.flash { animation: card-flash 1.4s ease-out; }
+  @keyframes card-flash { from { background: color-mix(in srgb, var(--gold) 24%, transparent); } to { background: transparent; } }
+  .fish-list li.brood { border-style: dashed; }
+  .brood-list { list-style: none; margin: 8px 0 0; padding: 0 0 0 8px; display: flex; flex-direction: column; gap: 6px; border-left: 2px solid var(--line); }
+  .brood-list li { padding: 8px 10px; }
+  .parent { display: flex; align-items: center; gap: 8px; }
+  .parent > span { flex: none; width: 50px; }
+  .parent strong { flex: 1; min-width: 0; }
+  .parent .thumb { cursor: pointer; }
+  .event-more { margin-top: 6px; }
+  .event-more summary { cursor: pointer; color: var(--gold); }
+  .event-more ul { margin: 6px 0 0; padding-left: 16px; display: flex; flex-direction: column; gap: 3px; font-size: 11px; }
+  @media (max-width: 1000px) {
+    .stage-wrap { top: 0; box-shadow: 0 10px 22px #000b; }
+    #stage { max-height: 38vh; }
+  }
+  /* game modes, list tools (sort, filters by colour and pattern, ranking) */
+  [hidden] { display: none !important; }
+  .game-switch { display: flex; align-items: center; gap: 6px; }
+  .game-switch > span { font: 600 10px system-ui, sans-serif; letter-spacing: 1.4px; text-transform: uppercase; color: #8fa196; margin-right: 2px; }
+  .game-switch button { flex: 1; padding: 7px 8px; }
+  .game-switch button[aria-pressed="true"] { background: var(--gold); color: #182b23; }
+  .list-tools { display: flex; flex-direction: column; gap: 8px; }
+  .list-tools .row select { width: 100%; min-width: 0; }
+  .trait-filters { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; }
+  .trait-filters label.on { color: var(--gold); }
+  .trait-filters select { width: 100%; min-width: 0; }
+  .list-foot { align-items: center; justify-content: space-between; flex-wrap: nowrap; }
+  .list-foot .hint { flex: 1; }
+  .fish-title { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+  .fish-title strong { font: 500 15px Georgia, serif; overflow-wrap: anywhere; }
+  .rank { font: 700 12px system-ui, sans-serif; color: #182b23; background: var(--gold); padding: 2px 6px; border-radius: 2px; font-variant-numeric: tabular-nums; }
+  .fish-list li.group-head { border: 0; padding: 8px 2px 0; font: 600 11px system-ui, sans-serif; letter-spacing: 0.6px; color: var(--gold); text-transform: uppercase; }
+  @media (max-width: 600px) { .hud { display: none; } }
 </style>
 <div class="shell">
   <header class="topbar">
@@ -146,24 +208,41 @@
   </header>
   <main class="workspace">
     <section class="stage-wrap">
-      <canvas id="stage" aria-label="Aquário com cinco guppies desenhados a partir dos genomas"></canvas>
-      <div class="hud"><span id="fps">— FPS</span><span id="gpu"></span></div>
-      <div id="error" class="error" hidden></div>
+      <div class="stage-box">
+        <canvas id="stage" aria-label="Aquário com cinco guppies desenhados a partir dos genomas"></canvas>
+        <div id="pick-ring" class="pick-ring" hidden></div>
+        <div id="pick-tag" class="fish-tag" hidden></div>
+        <div id="hover-tag" class="fish-tag soft" hidden></div>
+        <div class="hud"><span id="fps">— FPS</span><span id="gpu"></span></div>
+        <div id="error" class="error" hidden></div>
+      </div>
+      <div id="pick-bar" class="pick-bar" aria-live="polite">
+        <img id="pick-thumb" class="thumb" alt="" width="96" height="56" hidden>
+        <div class="pick-info"><strong id="pick-name"></strong><span id="pick-meta"></span></div>
+        <div id="pick-actions" class="pick-actions"></div>
+      </div>
     </section>
     <aside class="panel">
+      <div class="game-switch" role="group" aria-label="Modo de jogo">
+        <span>Modo</span>
+        <button id="game-quick" type="button" aria-pressed="true" title="Filhotes já adultos na hora; ninguém cruza sozinho">Rápido</button>
+        <button id="game-room" type="button" aria-pressed="false" title="Semanas, aquários, berçário e lago">Realista</button>
+      </div>
       <div class="tabs" role="group" aria-label="Aquário">
         <button id="mode-catalog" type="button" aria-pressed="true">Variedades</button>
-        <button id="mode-cross" type="button" aria-pressed="false">Plantel</button>
+        <button id="mode-cross" type="button" aria-pressed="false">Meus peixes</button>
       </div>
-      <p id="event" class="hint event" hidden></p>
+      <div id="event" class="hint event" hidden></div>
       <details id="guide" class="guide">
         <summary>Como jogar · desafios <b id="challenges-count"></b></summary>
         <ol class="steps">
+          <li><b>Modo</b>: <b>Rápido</b> (filhotes já adultos, só cruza quem você manda) ou <b>Realista</b> (semanas, aquários, lago). Cada um tem seu save.</li>
           <li><b>Variedades</b>: escolha peixes e toque em "Comprar".</li>
-          <li><b>Plantel</b>: com mãe e pai escolhidos, toque em <b>Cruzar</b>. O tempo anda em semanas.</li>
-          <li>Quando aparecer o aviso, toque em <b>Separar por sexo</b>, ou irmãos cruzam sozinhos.</li>
-          <li>Em cada peixe, <b>Detalhes</b> mostra medidas, pedigree, código para mandar a alguém e descarte.</li>
-          <li>Para criar de verdade: <b>Filtrar e ordenar</b> e <b>Seleção em lote</b>. No Lago tudo vira colônia.</li>
+          <li><b>Meus peixes</b>: com mãe e pai escolhidos, toque em <b>Cruzar</b>.</li>
+          <li>Toque num peixe nadando (ou na foto dele) para ver quem é e usar como mãe ou pai.</li>
+          <li>No Realista, quando aparecer o aviso, toque em <b>Separar por sexo</b>, ou irmãos cruzam sozinhos.</li>
+          <li>Em cada peixe, <b>Detalhes</b> mostra medidas, pedigree, código e descarte. Alevinos vêm juntos, um card por ninhada.</li>
+          <li><b>Ordenar</b> faz o ranking (nota, cauda, cor, agrupar por cor); <b>Filtrar</b> mostra só a cor ou ninhada que você quer; <b>Seleção em lote</b> descarta os piores de uma vez.</li>
         </ol>
         <ul id="challenges" class="challenges"></ul>
       </details>
@@ -173,8 +252,8 @@
         <button id="next" type="button" aria-label="Próximas variedades">›</button>
       </div>
       <div id="cross-controls" class="breed">
-        <div class="parent"><span>♀ Mãe</span><strong id="mom-name"></strong></div>
-        <div class="parent"><span>♂ Pai</span><strong id="dad-name"></strong></div>
+        <div class="parent"><span>♀ Mãe</span><img id="mom-thumb" class="thumb sm" alt="" width="58" height="34" hidden><strong id="mom-name"></strong></div>
+        <div class="parent"><span>♂ Pai</span><img id="dad-thumb" class="thumb sm" alt="" width="58" height="34" hidden><strong id="dad-name"></strong></div>
         <button id="cross" class="primary big" type="button">Cruzar</button>
         <div class="row time">
           <button id="week" type="button">+1 semana</button>
@@ -186,6 +265,7 @@
           <p id="planner" class="hint planner" hidden></p>
           <select id="mom" aria-label="Comprar uma fundadora de linhagem"></select>
           <select id="dad" aria-label="Comprar um fundador de linhagem"></select>
+          <label for="brood-size">Filhotes por cruzamento <select id="brood-size"><option value="10">10</option><option value="20" selected>20</option><option value="40">40</option></select></label>
           <label class="check" for="maternity"><input id="maternity" type="checkbox"> Caixa-maternidade: filhotes nascem no berçário</label>
         </details>
       </div>
@@ -202,19 +282,6 @@
           <p id="tank-info" class="hint"></p>
         </div>
         <div id="pond-stock" hidden><select id="stock-strain" aria-label="Povoar o lago"></select></div>
-        <details class="more-box">
-          <summary id="filter-sum">Filtrar e ordenar</summary>
-          <select id="goal-add" aria-label="Adicionar característica à meta"></select>
-          <div id="goal-chips" class="chips"></div>
-          <div class="row">
-            <label for="f-sex">Sexo <select id="f-sex"><option value="">Todos</option><option value="male">Machos</option><option value="female">Fêmeas</option></select></label>
-            <label for="f-age">Idade <select id="f-age"><option value="">Todas</option><option value="adulto">Adultos</option><option value="young">Alevinos e jovens</option><option value="idoso">Idosos</option></select></label>
-          </div>
-          <label for="sort">Ordem <select id="sort"><option value="new">Mais novos</option><option value="old">Mais velhos</option><option value="goal">Mais da meta</option><option value="chars">Mais características</option><option value="q:tailSize">Maior cauda</option><option value="q:tailSpread">Mais abertura</option><option value="q:dorsalSize">Maior dorsal</option><option value="q:colorCoverage">Mais cor</option><option value="q:bodySize">Maior porte</option><option value="random">Amostra aleatória</option></select></label>
-          <button id="resample" type="button" class="ghost small">Outra amostra</button>
-          <label class="check" for="only-goal"><input id="only-goal" type="checkbox"> Só quem tem a meta toda</label>
-          <p id="list-count" class="hint"></p>
-        </details>
         <details class="more-box">
           <summary id="sel-sum">Seleção em lote</summary>
           <div id="batch-stats" class="stats" hidden></div>
@@ -240,6 +307,22 @@
           <button id="reset" type="button" class="ghost">Recomeçar plantel</button>
           <label class="check" for="lab"><input id="lab" type="checkbox"> Laboratório (dev): mostrar genótipo</label>
         </details>
+      </div>
+      <div id="list-tools" class="list-tools">
+        <div class="row">
+          <label for="sort">Ordenar <select id="sort"></select></label>
+          <label for="f-sex">Sexo <select id="f-sex"><option value="">Todos</option><option value="male">Machos</option><option value="female">Fêmeas</option></select></label>
+        </div>
+        <button id="resample" type="button" class="ghost small" hidden>Outra amostra</button>
+        <details class="more-box filter-box">
+          <summary id="filter-sum">Filtrar por cor, padrão e ninhada</summary>
+          <div class="row">
+            <label for="f-brood">Ninhada <select id="f-brood"></select></label>
+            <label for="f-age">Idade <select id="f-age"><option value="">Todas</option><option value="adulto">Adultos</option><option value="young">Alevinos e jovens</option><option value="idoso">Idosos</option></select></label>
+          </div>
+          <div id="trait-filters" class="trait-filters"></div>
+        </details>
+        <div class="row list-foot"><p id="list-count" class="hint"></p><button id="clear-filters" type="button" class="ghost small" hidden>Limpar filtros</button></div>
       </div>
       <ul id="fish-list" class="fish-list"></ul>
       <button id="more" type="button" hidden>Mostrar mais</button>

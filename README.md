@@ -12,11 +12,15 @@ Simulador de criação de guppy no navegador, com genética de verdade e visual 
   - Padrões de macho ligados ao X e ao Y.
   - Medidas de muitos genes (cauda, abertura, dorsal, cor, porte) que respondem à seleção aos poucos.
   - Defeitos escondidos que a endogamia expõe.
-- **Plantel no tempo:**
+- **Dois modos, cada um com seu save:**
+  - **Rápido:** cada cruzamento dá filhotes já adultos, na hora; ninguém cruza sem você mandar.
+  - **Realista:** o plantel no tempo, abaixo.
+- **Escolher no aquário:** toque num peixe nadando para ver quem é e usar como mãe ou pai. Cada card tem a foto do peixe.
+- **Plantel no tempo (Realista):**
   - Aquários e lago com lotação, temperatura e comida.
   - Os peixes crescem, envelhecem e morrem.
   - A fêmea guarda esperma, e o pai fica incerto até o teste de paternidade.
-- **Seleção:** meta, filtros, estatística do lote e rodadas de corte.
+- **Seleção:** ranking por nota e medidas, agrupar por cor, filtros por cor, padrão e ninhada, estatística do lote e rodadas de corte.
 - **Desafios** e **troca de peixes por código:** quem colar o código recebe exatamente o mesmo peixe.
 
 O plantel fica salvo no navegador de cada pessoa.
