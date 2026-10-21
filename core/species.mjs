@@ -15,8 +15,8 @@ import { hashString, rngFromSeed } from './rng.mjs';
 // Trait types: bool | enum | number. A bool fed by several effects needs combine 'any'|'all'; an enum fed
 // by several needs combine 'priority' with a `priority` list (first wins). Number traits sum base +
 // additive contributions + developmental noise, then clamp. sexLimited: only expressed in that observed
-// sex. epistasis: ordered rules applied after all loci; `when` reads a resolved trait, `set` overrides,
-// `map` turns listed values of a trait into others.
+// sex. epistasis: ordered rules applied after all loci; `when` reads resolved traits (equals, in, atLeast;
+// a list means all), `set` overrides, `map` turns listed values of a trait into others.
 // expressedIn (locus or effect): only acts in that observed sex (carried silently by the other).
 // codominant (mendelian locus with `values`): every allele present acts, not only the most dominant one
 // (a haplotype block: a female's two X both show their genes).
@@ -58,25 +58,26 @@ import { hashString, rngFromSeed } from './rng.mjs';
 
 const GUPPY_Y_ALLELES = ['plain', 'ornate', 'snakeskin', 'cobra', 'moscow', 'japanBlue', 'coral', 'platinum',
   'dragon', 'koi', 'fullRed', 'doubleSword', 'topSword', 'bottomSword', 'redTail', 'blueTail',
-  'moscowBlack', 'panda', 'galaxy', 'neonBlue', 'yellowTail', 'purpleTail', 'greenTail', 'multiTail'];
+  'moscowBlack', 'panda', 'galaxy', 'neonBlue', 'yellowTail', 'purpleTail', 'greenTail', 'multiTail', 'lace'];
 /** Y haplotype effect table: every allele maps to null unless listed. */
 const yValues = listed => Object.fromEntries(GUPPY_Y_ALLELES.map(a => [a, a in listed ? listed[a] : null]));
 /**
  * What each sex-linked haplotype does; shared by the Y locus and its X-linked copy. A haplotype is a
  * block of linked genes, so one can carry several layers (galaxy = platinum + snakeskin), and the layers
  * of a male's X and Y add up (snakeskin from one, full red from the other). Most male colour genes act
- * only in males [19]; full red, platinum/dragon metal and the snakeskin tail lace also show, weaker, in
- * females of those lines [20][22] (strengths TBD). Koi left the sex chromosomes in v7: the red head is
- * the autosomal Kohaku locus (Ko); the 'koi' haplotype survives only as a red tail for old codes.
+ * only in males [19]; full red shows, weaker, in females [22] (strength TBD) and the snakeskin tail
+ * (Sst) can show faintly in females [25]. Snakeskin body (Ssb) and tail (Sst) are separate genes [19]:
+ * 'snakeskin' and 'cobra' carry both, 'lace' only the tail (the "lacetail"). Cobra bars come from the
+ * autosomal Zebrinus (v8). Koi left the sex chromosomes in v7 (autosomal Kohaku, Ko); the 'koi'
+ * haplotype survives only as a red tail for old codes. Platinum (Schimmelpfennig, Sc) is Y-linked [28].
  */
 const GUPPY_SEX_PATTERN_EFFECTS = [
   { trait: 'pattern', expressedIn: 'male', values: yValues({ ornate: true, doubleSword: true, topSword: true, bottomSword: true }) },
-  { trait: 'snakeskin', expressedIn: 'male', values: yValues({ snakeskin: 'snakeskin', cobra: 'cobra', galaxy: 'snakeskin' }) },
+  { trait: 'snakeskin', expressedIn: 'male', values: yValues({ snakeskin: 'snakeskin', cobra: 'snakeskin', galaxy: 'snakeskin' }) },
   { trait: 'bodyPattern', expressedIn: 'male', values: yValues({ moscow: 'moscow', japanBlue: 'japanBlue', coral: 'coral', moscowBlack: 'moscowBlack',
-    panda: 'panda', neonBlue: 'neonBlue' }) },
-  { trait: 'bodyPattern', female: 0.4, values: yValues({ platinum: 'platinum', dragon: 'dragon', galaxy: 'platinum' }) },
+    panda: 'panda', neonBlue: 'neonBlue', platinum: 'platinum', dragon: 'dragon', galaxy: 'platinum' }) },
   { trait: 'fullRed', female: 0.55, values: yValues({ fullRed: true }) },
-  { trait: 'tailPattern', female: 0.3, values: yValues({ snakeskin: 'snakeskin', cobra: 'snakeskin', galaxy: 'snakeskin' }) },
+  { trait: 'tailPattern', female: 0.3, values: yValues({ snakeskin: 'snakeskin', cobra: 'snakeskin', galaxy: 'snakeskin', lace: 'snakeskin' }) },
   { trait: 'tailColor', expressedIn: 'male', values: yValues({ koi: 'red', dragon: 'red', fullRed: 'red', redTail: 'red', coral: 'red', blueTail: 'blue',
     japanBlue: 'blue', moscow: 'dark', platinum: 'white', moscowBlack: 'dark', panda: 'dark', neonBlue: 'blue', yellowTail: 'yellow',
     purpleTail: 'purple', greenTail: 'green', multiTail: 'multi' }) },
@@ -90,7 +91,7 @@ const poly = (id, positionCm, trait, step) => ({ id, positionCm, alleles: ['+', 
 
 export const SPECIES = {
   guppy: {
-    id: 'guppy', label: 'Guppy', version: 7, view: 'lateral', reproductiveMode: 'livebearer',
+    id: 'guppy', label: 'Guppy', version: 8, view: 'lateral', reproductiveMode: 'livebearer',
     sexSystem: 'XY', sexReversalTemperatureC: null,
     spermStorage: true, eggCannibalism: false,
     growth: { adultAgeDays: 90 }, // TBD
@@ -135,8 +136,15 @@ export const SPECIES = {
                       combine: 'priority', priority: ['moscowBlack', 'moscow', 'panda', 'neonBlue', 'dragon', 'coral', 'japanBlue', 'platinum', 'none'],
                       ...label('Padrão metálico', { none: 'Nenhum', moscow: 'Moscow', japanBlue: 'Japan blue', coral: 'Coral', platinum: 'Platinum',
                         dragon: 'Dragon', moscowBlack: 'Moscow preto', panda: 'Panda', neonBlue: 'Neon blue' }) },
+      // 'cobra' is not made by a gene of its own: snakeskin plus Zebrinus bars (epistasis below)
       snakeskin:    { type: 'enum', default: 'none', options: ['none', 'snakeskin', 'cobra'], combine: 'priority', priority: ['cobra', 'snakeskin', 'none'],
-                      ...label('Snakeskin no corpo', { none: 'Não', snakeskin: 'Snakeskin', cobra: 'Cobra (barras)' }) },
+                      ...label('Snakeskin no corpo', { none: 'Não', snakeskin: 'Snakeskin', cobra: 'King cobra (snakeskin + zebrinus)' }) },
+      zebrinus:     { type: 'bool', default: false, ...label('Zebrinus (barras)') },
+      glassBelly:   { type: 'bool', default: false, ...label('Glass belly (barriga transparente)') },
+      pink:         { type: 'bool', default: false, ...label('Pink (pedúnculo branco translúcido)') },
+      purpleBody:   { type: 'enum', default: 'none', options: ['none', 'het', 'hom'], ...label('Purple body', { none: 'Não', het: 'Purple (uma cópia)', hom: 'Purple (duas cópias)' }) },
+      metalGold:    { type: 'bool', default: false, combine: 'any', ...label('Metal gold (amarelo metálico)') },
+      micariff:     { type: 'bool', default: false, ...label('Micariff (amarelo)') },
       fullRed:      { type: 'bool', default: false, combine: 'any', ...label('Full red (corpo vermelho)') },
       kohaku:       { type: 'bool', default: false, ...label('Cabeça vermelha (koi)') },
       tailPattern:  { type: 'enum', default: 'none', options: ['none', 'snakeskin', 'mosaic', 'grass', 'leopard'],
@@ -147,9 +155,11 @@ export const SPECIES = {
                       ...label('Cor da cauda', { natural: 'Natural', red: 'Vermelha', blue: 'Azul', white: 'Branca', dark: 'Escura', yellow: 'Amarela',
                         purple: 'Roxa', green: 'Verde', multi: 'Multicolor', pastel: 'Pastel' }) },
       iridescent:   { type: 'bool', default: false },
+      // The delta complex hides the sword genes (Ds is recessive to it [19]); half-moon is not a gene but a
+      // delta whose spread reaches ~180 degrees (epistasis below).
       tailShape:    { type: 'enum', default: 'round',
                       options: ['delta', 'veil', 'halfMoon', 'fan', 'flag', 'round', 'spade', 'spear', 'pin', 'lyre', 'topSword', 'bottomSword', 'doubleSword'],
-                      combine: 'priority', priority: ['doubleSword', 'topSword', 'bottomSword', 'lyre', 'delta', 'veil', 'halfMoon', 'fan', 'flag', 'spade', 'spear', 'pin', 'round'],
+                      combine: 'priority', priority: ['halfMoon', 'delta', 'veil', 'fan', 'flag', 'doubleSword', 'topSword', 'bottomSword', 'lyre', 'spade', 'spear', 'pin', 'round'],
                       ...label('Cauda', { delta: 'Delta', veil: 'Véu', halfMoon: 'Half-moon', fan: 'Fantail', flag: 'Flag (scarf)', round: 'Redonda', spade: 'Spade',
                         spear: 'Spear', pin: 'Pin', lyre: 'Lyre', topSword: 'Top sword', bottomSword: 'Bottom sword', doubleSword: 'Double sword' }) },
       tailBorder:   { type: 'bool', default: false, ...label('Borda da cauda') },
@@ -184,14 +194,16 @@ export const SPECIES = {
         poly('Hr1', 82, 'headRed', 0.11),
       ] },
       { id: 'C2', lengthCm: 95, loci: [
+        // Pink: light, often translucent white on the rear peduncle; autosomal recessive [28]
+        { id: 'Pk', positionCm: 20, tbd: 'nas fêmeas não confirmado', alleles: ['+', 'p'], kind: 'mendelian', effect: { trait: 'pink', expressedIn: 'male', values: { '+': false, p: true } } }, // in females: TBD (not shown)
         // a tail-size locus sits right next to the tail-shape series
         poly('Tz2', 40, 'tailSize', 0.08),
         // Tail shape series: the shape category; its size and spread are polygenic. Dominance order TBD.
-        { id: 'Cau', positionCm: 46, alleles: ['Dl', 'Vl', 'Hm', 'Fn', 'Fl', 'Sp', 'Spr', 'Pn', 'Rd'], kind: 'mendelian',
-          effect: { trait: 'tailShape', values: { Dl: 'delta', Vl: 'veil', Hm: 'halfMoon', Fn: 'fan', Fl: 'flag', Sp: 'spade', Spr: 'spear', Pn: 'pin', Rd: 'round' } } },
+        { id: 'Cau', positionCm: 46, tbd: 'ordem de dominância entre formatos não confirmada', alleles: ['Dl', 'Vl', 'Fn', 'Fl', 'Sp', 'Spr', 'Pn', 'Rd'], wild: 'Rd', kind: 'mendelian',
+          effect: { trait: 'tailShape', values: { Dl: 'delta', Vl: 'veil', Fn: 'fan', Fl: 'flag', Sp: 'spade', Spr: 'spear', Pn: 'pin', Rd: 'round' } } },
         { id: 'Bord', positionCm: 51, alleles: ['B', 'b'], kind: 'mendelian', effect: { trait: 'tailBorder', values: { B: true, b: false } } },
         poly('Tw1', 60, 'tailSpread', 0.1),
-        { id: 'Lyr', positionCm: 80, alleles: ['Lyr', '+'], wild: '+', kind: 'mendelian', effect: { trait: 'tailShape', values: { Lyr: 'lyre', '+': null } } }, // inheritance TBD
+        { id: 'Lyr', positionCm: 80, tbd: 'herança não confirmada', alleles: ['Lyr', '+'], wild: '+', kind: 'mendelian', effect: { trait: 'tailShape', values: { Lyr: 'lyre', '+': null } } }, // inheritance TBD
         poly('Dz1', 88, 'dorsalSize', 0.1),
       ] },
       { id: 'C3', lengthCm: 80, loci: [
@@ -199,10 +211,9 @@ export const SPECIES = {
         poly('Cv2', 25, 'colorCoverage', 0.1),
         // Kohaku: red head (and red caudal) in both sexes [20][21]; dominant here, inheritance TBD (no source
         // gives it; females showing it rules out Y-only). Blue (r) and Asian Blau hide it (epistasis).
-        { id: 'Ko', positionCm: 33, alleles: ['Ko', '+'], wild: '+', kind: 'mendelian', effect: { trait: 'kohaku', values: { Ko: true, '+': false } } },
+        { id: 'Ko', positionCm: 33, tbd: 'herança não publicada (dominante autossômico aqui)', alleles: ['Ko', '+'], wild: '+', kind: 'mendelian', effect: { trait: 'kohaku', values: { Ko: true, '+': false } } },
         { id: 'Pat', positionCm: 42, alleles: ['P', 'p'], kind: 'mendelian', effect: { trait: 'pattern', values: { P: true, p: false } } },
         poly('Tz3', 55, 'tailSize', 0.08),
-        { id: 'Mo', positionCm: 70, alleles: ['Mo', '+'], wild: '+', kind: 'mendelian', effect: { trait: 'tailPattern', expressedIn: 'male', values: { Mo: 'mosaic', '+': null } } }, // inheritance TBD
         poly('Bz2', 78, 'bodySize', 0.1),
       ] },
       { id: 'C4', lengthCm: 75, loci: [
@@ -213,7 +224,9 @@ export const SPECIES = {
         { id: 'Gol', positionCm: 50, alleles: ['+', 'g'], kind: 'mendelian', effect: { trait: 'bodyBase', values: { '+': null, g: 'golden' } } },
         // Real red eye: red eyes without albinism; inheritance TBD (recessive here).
         poly('Cv3', 60, 'colorCoverage', 0.1),
-        { id: 'Rre', positionCm: 68, alleles: ['+', 're'], kind: 'mendelian', effect: { trait: 'redEye', values: { '+': false, re: true } } },
+        { id: 'Rre', positionCm: 68, tbd: 'herança não confirmada (recessivo aqui)', alleles: ['+', 're'], kind: 'mendelian', effect: { trait: 'redEye', values: { '+': false, re: true } } },
+        // Micariff: yellow body and fins; "yellow recessive", origin kept secret [29]; sexes TBD
+        { id: 'Mic', positionCm: 72, tbd: 'origem secreta; nas fêmeas não confirmado', alleles: ['+', 'mc'], kind: 'mendelian', effect: { trait: 'micariff', expressedIn: 'male', values: { '+': false, mc: true } } }, // in females: TBD (not shown)
       ] },
       { id: 'C5', lengthCm: 82, loci: [
         poly('Tz4', 8, 'tailSize', 0.08),
@@ -223,19 +236,28 @@ export const SPECIES = {
         { id: 'Blu', positionCm: 60, alleles: ['+', 'r'], kind: 'mendelian', effect: { trait: 'noOrange', values: { '+': false, r: true } } },
         // Lutino (wine-red eye albino, wrea): autosomal recessive per Shaddock; partial melanin here.
         { id: 'Lut', positionCm: 75, alleles: ['+', 'w'], kind: 'mendelian', effect: { trait: 'lutino', values: { '+': false, w: true } } },
+        // Glass belly: no silvery lining on the belly, the gut and embryos show; autosomal recessive [30][31]
+        { id: 'Gb', positionCm: 80, alleles: ['+', 'gb'], kind: 'mendelian', effect: { trait: 'glassBelly', values: { '+': false, gb: true } } },
       ] },
       { id: 'C6', lengthCm: 60, loci: [
+        // Purple Body: orange turns pinkish-purple, violet-blue shows more; incompletely dominant, both sexes [28]
+        { id: 'Pb', positionCm: 4, alleles: ['+', 'Pb'], kind: 'mendelian', effect: { trait: 'purpleBody', genotypes: { '+/+': 'none', '+/Pb': 'het', 'Pb/Pb': 'hom' } } },
         poly('Tw3', 10, 'tailSpread', 0.1),
         { id: 'Def', positionCm: 22, alleles: ['D', 'd'], kind: 'deleterious', carrierFrequency: 0.12, effect: { trait: 'spinalDefect', values: { D: false, d: true } } },
         poly('Dz3', 35, 'dorsalSize', 0.1),
-        { id: 'Dum', positionCm: 45, alleles: ['+', 'du'], kind: 'mendelian', effect: { trait: 'bigEar', values: { '+': false, du: true } } }, // inheritance TBD
+        { id: 'Dum', positionCm: 45, tbd: 'herança não confirmada (recessivo aqui)', alleles: ['+', 'du'], kind: 'mendelian', effect: { trait: 'bigEar', values: { '+': false, du: true } } }, // inheritance TBD
         { id: 'Vi2', positionCm: 50, alleles: ['+', 'v'], kind: 'deleterious', carrierFrequency: 0.1, effect: { trait: 'fryLethal', values: { '+': false, v: true } } },
         poly('Hr3', 57, 'headRed', 0.11),
       ] },
       { id: 'C7', lengthCm: 70, loci: [
+        // Metal Gold: yellow metallic; heterozygotes show only in males, homozygotes in both sexes [19][28]
+        // (linkage not described, autosomal here, TBD); Asian Blau hides it (epistasis)
+        { id: 'Mg', positionCm: 5, tbd: 'cromossomo não descrito (autossômico aqui)', alleles: ['+', 'Mg'], kind: 'mendelian', effects: [
+          { trait: 'metalGold', expressedIn: 'male', genotypes: { '+/+': null, '+/Mg': true, 'Mg/Mg': true } },
+          { trait: 'metalGold', female: 1, genotypes: { '+/+': null, '+/Mg': null, 'Mg/Mg': true } }] },
         poly('Tz5', 15, 'tailSize', 0.08),
         // Fin colour of the line, expressed in both sexes (real tail colours are mostly X/Y-linked; dominance order TBD).
-        { id: 'Fc', positionCm: 35, alleles: ['R', 'Pu', 'Bl', 'G', 'Ye', 'Pa', '+'], wild: '+', kind: 'mendelian',
+        { id: 'Fc', positionCm: 35, tbd: 'cor de nadadeira autossômica aqui; na vida real boa parte é ligada ao sexo', alleles: ['R', 'Pu', 'Bl', 'G', 'Ye', 'Pa', '+'], wild: '+', kind: 'mendelian',
           effect: { trait: 'tailColor', values: { R: 'red', Pu: 'purple', Bl: 'blue', G: 'green', Ye: 'yellow', Pa: 'pastel', '+': null } } },
         poly('Cv4', 50, 'colorCoverage', 0.1),
         poly('Tw4', 65, 'tailSpread', 0.1),
@@ -246,6 +268,9 @@ export const SPECIES = {
         { id: 'Nb', positionCm: 15, alleles: ['+', 'Nb'], kind: 'mendelian',
           effect: { trait: 'blau', genotypes: { '+/+': 'none', '+/Nb': 'blueMetal', 'Nb/Nb': 'white' } } },
         poly('Dz4', 30, 'dorsalSize', 0.1),
+        // Zebrinus: vertical bars on the peduncle and rear body; autosomal dominant [28]. With snakeskin it
+        // makes the King Cobra, alone the "tiger" bars [31]
+        { id: 'Ze', positionCm: 38, tbd: 'nas fêmeas não confirmado', alleles: ['Ze', '+'], wild: '+', kind: 'mendelian', effect: { trait: 'zebrinus', expressedIn: 'male', values: { Ze: true, '+': false } } }, // a male ornament; in females TBD (not shown)
         poly('Bz4', 45, 'bodySize', 0.1),
         { id: 'Lt2', positionCm: 60, alleles: ['+', 'l'], kind: 'deleterious', carrierFrequency: 0.1, effect: { trait: 'embryoLethal', values: { '+': false, l: true } } },
       ] },
@@ -259,7 +284,9 @@ export const SPECIES = {
       { id: 'Ni', positionCm: 10, alleles: ['Ni', '+'], wild: '+', kind: 'mendelian', effect: { trait: 'tuxedo', values: { Ni: true, '+': false } } },
       { id: 'Xc', positionCm: 25, alleles: GUPPY_Y_ALLELES, kind: 'mendelian', codominant: true, effects: GUPPY_SEX_PATTERN_EFFECTS },
       { id: 'Gra', positionCm: 35, alleles: ['Gra', '+'], wild: '+', kind: 'mendelian', effect: { trait: 'tailPattern', expressedIn: 'male', values: { Gra: 'grass', '+': null } } },
-      { id: 'Le', positionCm: 45, alleles: ['Le', '+'], wild: '+', kind: 'mendelian', effect: { trait: 'tailPattern', expressedIn: 'male', values: { Le: 'leopard', '+': null } } }, // dominance TBD
+      // Mosaic: X-linked dominant [28] (autosomal before v8)
+      { id: 'Mo', positionCm: 40, alleles: ['Mo', '+'], wild: '+', kind: 'mendelian', effect: { trait: 'tailPattern', expressedIn: 'male', values: { Mo: 'mosaic', '+': null } } },
+      { id: 'Le', positionCm: 45, tbd: 'dominância não confirmada', alleles: ['Le', '+'], wild: '+', kind: 'mendelian', effect: { trait: 'tailPattern', expressedIn: 'male', values: { Le: 'leopard', '+': null } } }, // dominance TBD
     ] },
     // One Y-linked locus whose alleles are Y haplotypes; stored in genome.yPattern. Rarely it swaps with
     // its X partner in male meiosis (~3 crossovers in 669 progeny; colour factors can move to the X:
@@ -275,8 +302,17 @@ export const SPECIES = {
       { when: { trait: 'noOrange', equals: true }, set: { kohaku: false, fullRed: false },
         map: { tailColor: { red: 'white', yellow: 'white', pastel: 'white', multi: 'blue' } } },
       { when: { trait: 'blau', equals: 'white' }, set: { kohaku: false, fullRed: false } },
+      // albinos have no melanin, so golden and blond (melanophore genes) cannot be seen [18]
+      { when: { trait: 'albino', equals: true }, map: { bodyBase: { golden: 'grey', blond: 'grey' } } },
+      // yellow needs xanthophores (none in Blue [18]); Asian Blau suppresses yellow, so no Metal Gold with it [19]
+      { when: { trait: 'noOrange', equals: true }, set: { micariff: false, metalGold: false } },
+      { when: { trait: 'blau', in: ['blueMetal', 'white'] }, set: { metalGold: false } },
+      // King Cobra = snakeskin + Zebrinus bars [31]
+      { when: [{ trait: 'snakeskin', equals: 'snakeskin' }, { trait: 'zebrinus', equals: true }], set: { snakeskin: 'cobra' } },
+      // half-moon: a delta opened to ~180 degrees (spread 0.75 of the 0-1 measure here, TBD)
+      { when: [{ trait: 'tailShape', equals: 'delta' }, { trait: 'tailSpread', atLeast: 0.75 }], set: { tailShape: 'halfMoon' } },
     ],
-    phenotypeModel: 'varieties_v4'
+    phenotypeModel: 'varieties_v5'
   },
   medaka: {
     id: 'medaka', label: 'Medaka', version: 1, view: 'top', reproductiveMode: 'egg_layer',
@@ -361,7 +397,11 @@ const GUPPY_LAYOUTS = {
 GUPPY_LAYOUTS[7] = { ...GUPPY_LAYOUTS[6],
   C1: [...GUPPY_LAYOUTS[6].C1, 'Hr1'], C3: ['Vi1', 'Cv2', 'Ko', 'Pat', 'Tz3', 'Mo', 'Bz2'], C4: ['Tw2', 'Sat', 'Dz2', 'Hr2', 'Gol', 'Cv3', 'Rre'],
   C6: [...GUPPY_LAYOUTS[6].C6, 'Hr3'], C8: ['Hr4', ...GUPPY_LAYOUTS[6].C8] };
-const GUPPY_X_LAYOUTS = { 5: ['Xc'], 6: ['Ni', 'Xc', 'Gra', 'Le'], 7: ['Ni', 'Xc', 'Gra', 'Le'] };
+GUPPY_LAYOUTS[8] = { ...GUPPY_LAYOUTS[7],
+  C2: ['Pk', ...GUPPY_LAYOUTS[7].C2], C3: GUPPY_LAYOUTS[7].C3.filter(id => id !== 'Mo'), C4: [...GUPPY_LAYOUTS[7].C4, 'Mic'],
+  C5: [...GUPPY_LAYOUTS[7].C5, 'Gb'], C6: ['Pb', ...GUPPY_LAYOUTS[7].C6], C7: ['Mg', ...GUPPY_LAYOUTS[7].C7],
+  C8: ['Hr4', 'Nb', 'Dz4', 'Ze', 'Bz4', 'Lt2'] };
+const GUPPY_X_LAYOUTS = { 5: ['Xc'], 6: ['Ni', 'Xc', 'Gra', 'Le'], 7: ['Ni', 'Xc', 'Gra', 'Le'], 8: ['Ni', 'Xc', 'Gra', 'Mo', 'Le'] };
 /**
  * v5 -> v6: Ni, Gra and Le move from autosomes to the X (an XY keeps the allele of its first homolog,
  * the one it shows as hemizygous), and the new polygenic loci are drawn with frequency 1/2 from a
@@ -412,6 +452,26 @@ function toV7(species, genome) {
   }
   return g;
 }
+/**
+ * v7 -> v8: Mosaic moves to the X (a male keeps the allele of his first homolog), platinum leaves the X
+ * (it is Y-linked), half-moon stops being an allele (a delta; the spread decides), and a 'cobra' haplotype
+ * becomes plain snakeskin plus one Zebrinus allele, which is what makes the cobra bars. New loci are wild.
+ */
+function toV8(species, genome) {
+  const c3 = GUPPY_LAYOUTS[7].C3, mi = c3.indexOf('Mo');
+  const mo = genome.chromosomes.C3.map(h => h[mi]);
+  const xi = GUPPY_X_LAYOUTS[7].indexOf('Xc');
+  const cobra = (genome.yPattern === 'cobra' ? 1 : 0) + (genome.x ?? []).filter(h => h[xi] === 'cobra').length;
+  const x = (genome.x ?? []).map((h, k) => {
+    const xc = h[xi] === 'platinum' || h[xi] === 'galaxy' ? (h[xi] === 'galaxy' ? 'snakeskin' : 'plain') : h[xi];
+    return [h[0], xc, h[2], mo[k], h[3]];
+  });
+  const g = relayout(species, GUPPY_LAYOUTS[7], GUPPY_LAYOUTS[8], { ...genome, x });
+  const ci = GUPPY_LAYOUTS[8].C2.indexOf('Cau');
+  for (const h of [0, 1]) if (g.chromosomes.C2[h][ci] === 'Hm') g.chromosomes.C2[h][ci] = 'Dl';
+  if (cobra) { const zi = GUPPY_LAYOUTS[8].C8.indexOf('Ze'); g.chromosomes.C8[0][zi] = 'Ze'; if (cobra > 1) g.chromosomes.C8[1][zi] = 'Ze'; }
+  return g;
+}
 /** v3 -> v4: add the X with its (then single) pattern locus as wild type, one haplotype per X. */
 function addX(genome) {
   return { ...genome, x: genome.sexChromosomes.filter(s => s === 'X').map(() => ['plain']) };
@@ -425,9 +485,10 @@ SPECIES.guppy.migrations = {
   4: genome => relayout(SPECIES.guppy, GUPPY_LAYOUTS[3], GUPPY_LAYOUTS[5], genome),
   5: genome => toV6(SPECIES.guppy, genome),
   6: genome => toV7(SPECIES.guppy, genome),
+  7: genome => toV8(SPECIES.guppy, genome),
 };
-if (JSON.stringify(layoutOf(SPECIES.guppy)) !== JSON.stringify(GUPPY_LAYOUTS[7])
-  || JSON.stringify(SPECIES.guppy.xChromosome.loci.map(l => l.id)) !== JSON.stringify(GUPPY_X_LAYOUTS[7])) {
+if (JSON.stringify(layoutOf(SPECIES.guppy)) !== JSON.stringify(GUPPY_LAYOUTS[8])
+  || JSON.stringify(SPECIES.guppy.xChromosome.loci.map(l => l.id)) !== JSON.stringify(GUPPY_X_LAYOUTS[8])) {
   throw Error('guppy chromosome layout changed: add a layout and a migration');
 }
 
@@ -564,9 +625,15 @@ export function validateSpecies(species) {
     if (count > 1 && t.type === 'bool' && !t.combine) throw Error(`trait ${name}: several loci need combine any|all`);
   }
   for (const rule of species.epistasis ?? []) {
-    const when = traits[rule.when?.trait];
-    if (!when) throw Error('epistasis: unknown trait in when');
-    checkTraitValue(when, rule.when.equals, 'epistasis.when');
+    const conds = Array.isArray(rule.when) ? rule.when : [rule.when];
+    if (!conds.length) throw Error('epistasis: empty when');
+    for (const c of conds) {
+      const when = traits[c?.trait];
+      if (!when) throw Error('epistasis: unknown trait in when');
+      if ('equals' in c) checkTraitValue(when, c.equals, 'epistasis.when');
+      else if ('in' in c) { if (!Array.isArray(c.in)) throw Error('epistasis: in needs a list'); c.in.forEach(v => checkTraitValue(when, v, 'epistasis.when')); }
+      else if (!(when.type === 'number' && Number.isFinite(c.atLeast))) throw Error('epistasis: atLeast needs a number trait');
+    }
     for (const [name, value] of Object.entries(rule.set ?? {})) {
       if (!traits[name]) throw Error('epistasis: unknown trait in set');
       checkTraitValue(traits[name], value, 'epistasis.set');

@@ -4,7 +4,7 @@
 // alters existing fish.
 import { rngFromSeed } from '../../core/rng.mjs';
 
-export const ART_STYLE_VERSION = 'oil-spike-0.7.0';
+export const ART_STYLE_VERSION = 'oil-spike-0.8.0';
 
 const mix = (a, b, t) => a.map((v, i) => v + (b[i] - v) * t);
 const scale = (c, k) => c.map(v => v * k);
@@ -102,8 +102,14 @@ export function guppyLook(p) {
   if (p.blau === 'white') { dorsal = mix(dorsal, [0.88, 0.88, 0.88], 0.8); flank = mix(flank, [0.95, 0.95, 0.94], 0.85); belly = [0.97, 0.97, 0.96]; retic *= 0.2; }
   if (p.blau === 'blueMetal') { dorsal = mix(dorsal, [0.25, 0.38, 0.62], 0.55); flank = mix(flank, [0.55, 0.70, 0.90], 0.55); }
   if (blue) { dorsal = mix(dorsal, [0.38, 0.42, 0.50], 0.4); flank = mix(flank, [0.70, 0.76, 0.86], 0.35); }
+  // Micariff: a yellow body (Metal Gold adds its metallic yellow as a layer below)
+  if (p.micariff) { dorsal = mix(dorsal, [0.86, 0.72, 0.30], 0.35); flank = mix(flank, [0.98, 0.86, 0.40], 0.55); belly = mix(belly, [1.0, 0.94, 0.70], 0.3); }
   const hueJitter = r(-0.025, 0.025);
   [dorsal, flank, belly] = [dorsal, flank, belly].map(c => clamp01(scale(c.map((v, i) => v + (i === 0 ? hueJitter : i === 2 ? -hueJitter : 0)), bright)));
+
+  // Purple Body turns warm colours (orange, red) toward pinkish purple: one copy a little, two a lot [Bias]
+  const purpleK = p.purpleBody === 'hom' ? 0.65 : p.purpleBody === 'het' ? 0.3 : 0;
+  const purple = c => (purpleK ? mix(c, [0.70, 0.27, 0.62], purpleK * Math.max(0, Math.min(1, (c[0] - c[2]) * 1.6))) : c);
 
   // ---- male ornaments ----
   // Wild-type males carry a few modest spots (orange, black, a little iridescence) on a drab olive
@@ -133,19 +139,26 @@ export function guppyLook(p) {
   if (sc && mel < 0.3) snakeCols[1] = coolIfBlue([0.86, 0.42, 0.22], blue);   // no melanin: an orange chain
   if (sc && blue) snakeCols = snakeCols.map(c => coolIfBlue(c, blue));
   const snake = sc ? layer(SNAKE[p.snakeskin], snakeCols, strength('snakeskin'), sc[2]) : { id: 0, colA: [0, 0, 0], colB: [0, 0, 0], metal: 0, k: 0 };
-  const fullRed = p.fullRed ? layer(1, RED_BODY.map(c => chroma(c, chromaK)), strength('fullRed') * redK, 0.25) : { id: 0, colA: [0, 0, 0], colB: [0, 0, 0], metal: 0, k: 0 };
+  const fullRed = p.fullRed ? layer(1, RED_BODY.map(c => purple(chroma(c, chromaK))), strength('fullRed') * redK, 0.25) : { id: 0, colA: [0, 0, 0], colB: [0, 0, 0], metal: 0, k: 0 };
+  // Zebrinus bars (the cobra already draws them with its chain); Metal Gold; glass belly; pink peduncle
+  const barColor = mel > 0.3 ? [0.06, 0.06, 0.07] : coolIfBlue([0.86, 0.45, 0.25], blue);
+  const zebra = { k: p.zebrinus && p.snakeskin !== 'cobra' ? adult : 0, color: barColor };
+  const gold = { k: p.metalGold ? adult * strength('metalGold') : 0, color: chroma([0.98, 0.80, 0.30], chromaK) };
+  const glass = p.glassBelly ? 1 : 0;
+  const pink = p.pink ? adult : 0;
   // Kohaku: a red cap whose reach is the polygenic headRed; males also carry red on the body (varies)
   const koi = p.kohaku
-    ? { ...layer(1, KOI_RED.map(c => chroma(c, chromaK)), strength('kohaku') * redK), extent: q('headRed'), body: male ? q('headRed') : 0 }
+    ? { ...layer(1, KOI_RED.map(c => purple(chroma(c, chromaK))), strength('kohaku') * redK), extent: q('headRed'), body: male ? q('headRed') : 0 }
     : { id: 0, colA: [0, 0, 0], colB: [0, 0, 0], metal: 0, k: 0, extent: 0, body: 0 };
   const tuxedo = p.tuxedo
     ? { amount: Math.max(0.15, mel) * (male ? 1 : 0.32) * (0.35 + 0.65 * adult), color: mel > 0.5 ? [0.04, 0.04, 0.06] : [0.55, 0.42, 0.40] }
     : { amount: 0, color: [0, 0, 0] };
 
   // ---- fins ----
-  const orange = chroma(mix([0.95, 0.46, 0.14], [0.86, 0.18, 0.12], rng()), chromaK);
+  const orange = purple(chroma(mix([0.95, 0.46, 0.14], [0.86, 0.18, 0.12], rng()), chromaK));
   let tailA, tailB, tailAlpha, iri = 0.3;
-  if (TAIL_COLORS[p.tailColor]) { [tailA, tailB] = TAIL_COLORS[p.tailColor]; tailAlpha = male ? 0.92 : 0.78; }
+  if (TAIL_COLORS[p.tailColor]) { [tailA, tailB] = TAIL_COLORS[p.tailColor].map(purple); tailAlpha = male ? 0.92 : 0.78; }
+  else if (p.micariff) { [tailA, tailB] = TAIL_COLORS.yellow; tailAlpha = male ? 0.9 : 0.75; }
   else if (male && p.tailPattern === 'leopard') { tailA = [0.96, 0.82, 0.30]; tailB = [0.90, 0.66, 0.18]; tailAlpha = 0.9; }
   else if (male && p.tailPattern === 'grass') { tailA = [0.86, 0.82, 0.36]; tailB = [0.70, 0.66, 0.22]; tailAlpha = 0.88; }
   else if (male && p.tailPattern === 'snakeskin') { tailA = [0.84, 0.82, 0.40]; tailB = [0.64, 0.60, 0.24]; tailAlpha = 0.9; }
@@ -218,7 +231,7 @@ export function guppyLook(p) {
     colors: { dorsal, flank, belly },
     melanin: mel, reticulation: retic * mel, sheen: male ? 0.55 : 0.2,
     spots, gravid: !male ? 0.8 * mel * smooth(0.85, 1, grown) : 0,
-    bodyPattern, snake, fullRed, koi, tuxedo,
+    bodyPattern, snake, fullRed, koi, zebra, gold, glass, pink, tuxedo,
     eye: { u: male ? 0.085 : 0.08, y: 0.022, radius: 0.04,
       pupil: p.albino ? [0.75, 0.16, 0.2] : p.redEye ? [0.62, 0.06, 0.08] : p.lutino ? [0.36, 0.06, 0.10] : [0.03, 0.03, 0.04] },
     tail, dorsalFin, anal, pectoral,

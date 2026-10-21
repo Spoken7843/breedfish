@@ -12,6 +12,10 @@ export function hobbyName(p) {
   if (p.bigEar) parts.push('Dumbo Ear');
   if (p.bodyBase === 'golden') parts.push('Gold'); else if (p.bodyBase === 'blond') parts.push('Blond');
   if (p.blau === 'white') parts.push('White');
+  if (p.pink) parts.push('Pink');
+  if (p.purpleBody !== 'none') parts.push('Purple');
+  if (p.micariff) parts.push('Micariff');
+  if (p.metalGold) parts.push('Metal');
   const color = COLOR[p.tailColor] ?? '';
   // body layers, the way breeders stack them: Koi + pattern (+ Full Red) + tail
   if (p.kohaku) parts.push('Koi');
@@ -23,16 +27,21 @@ export function hobbyName(p) {
     if (p.bodyPattern === 'dragon') parts.push(p.fullRed ? '' : color || 'Silver', 'Dragon');
     else if (BODY[p.bodyPattern]) parts.push(p.bodyPattern === 'platinum' && !p.fullRed && !p.kohaku ? 'Full Platinum' : BODY[p.bodyPattern]);
     if (p.snakeskin === 'cobra') parts.push('King Cobra'); else if (p.snakeskin === 'snakeskin') parts.push('Snakeskin');
+    else if (p.zebrinus) parts.push('Tiger');
   }
-  const bodyShown = p.kohaku || p.fullRed || p.snakeskin !== 'none' || p.bodyPattern !== 'none';
+
+  const bodyShown = p.kohaku || p.fullRed || p.snakeskin !== 'none' || p.bodyPattern !== 'none' || p.zebrinus || p.metalGold || p.micariff || p.purpleBody !== 'none';
+  const lace = p.tailPattern === 'snakeskin' && p.snakeskin === 'none';   // tail-only snakeskin (Sst): "lace"
+  if (lace) parts.push(p.tuxedo || bodyShown ? '' : color, 'Lace');
   if (p.tailPattern === 'mosaic' || p.tailPattern === 'grass' || p.tailPattern === 'leopard') {
     if (!p.tuxedo && color) parts.push(color);
     parts.push({ mosaic: 'Mosaic', grass: 'Grass', leopard: 'Leopard' }[p.tailPattern]);
-  } else if (!p.tuxedo && !bodyShown && color) parts.push(color, p.tailColor === 'multi' ? '' : 'Tail');
+  } else if (!lace && !p.tuxedo && !bodyShown && color) parts.push(color, p.tailColor === 'multi' ? '' : 'Tail');
   else if (p.kohaku && !p.tuxedo && color && color !== 'Red') parts.push(color, 'Tail');
   if (p.noOrange) parts.unshift('Blue base');
   if (p.pattern && !bodyShown && !p.tuxedo && !color) parts.push('Wild');
   if (!parts.filter(Boolean).length) parts.push('Selvagem');
+  if (p.glassBelly) parts.push('Glass Belly');
   parts.push(TAIL[p.tailShape] ?? p.tailShape);
   return parts.filter(Boolean).join(' ');
 }

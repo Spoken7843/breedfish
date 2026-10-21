@@ -10,7 +10,8 @@
 import { femaleExpression, SPECIES } from '../../core/species.mjs';
 import { phenotype } from '../../core/engine.mjs';
 import { hashString } from '../../core/rng.mjs';
-import { GUPPY_STRAINS, strainFounder, Y_ONLY_PATTERNS } from '../../core/strains.mjs';
+import { GUPPY_STRAINS, strainFounder, strainX, Y_ONLY_PATTERNS } from '../../core/strains.mjs';
+import { canExist } from '../../core/possible.mjs';
 import { fertility, lifeStage, sexOf } from '../../core/lifehistory.mjs';
 import { addFish, advance as advanceWeeks, ageOf, breedAndWait, canMate, coi, createTank, cull, findAlive, gestationDays, knownParents, lengthMm,
   loadTank as loadTankSave, moveFish, nurseryOf, paternityTest, prune, QUICK_TANKS, quickCross, saveTank, setTank, tankById, tankLoad, WEEK } from '../../core/tank.mjs';
@@ -167,11 +168,19 @@ function bodyLayers(p) {
   if (p.fullRed) out.push('Full red' + faint('fullRed'));
   if (p.snakeskin !== 'none') out.push(T.snakeskin.labels[p.snakeskin] + faint('snakeskin'));
   if (p.bodyPattern !== 'none') out.push(T.bodyPattern.labels[p.bodyPattern] + faint('bodyPattern'));
+  if (p.zebrinus && p.snakeskin !== 'cobra') out.push('barras zebrinus');
+  if (p.metalGold) out.push('Metal gold');
+  if (p.micariff) out.push('Micariff');
+  if (p.purpleBody !== 'none') out.push(T.purpleBody.labels[p.purpleBody]);
+  if (p.pink) out.push('Pink');
+  if (p.glassBelly) out.push('Glass belly');
   return out;
 }
 /** One label for the whole body, for counts and groups: "Koi + Snakeskin", "Nenhum". */
 const bodyLabel = p => {
-  const parts = [p.kohaku && 'Koi', p.fullRed && 'Full red', p.snakeskin !== 'none' && T.snakeskin.labels[p.snakeskin], p.bodyPattern !== 'none' && T.bodyPattern.labels[p.bodyPattern]].filter(Boolean);
+  const parts = [p.kohaku && 'Koi', p.fullRed && 'Full red', p.snakeskin === 'cobra' ? 'King cobra' : p.snakeskin !== 'none' && 'Snakeskin',
+    p.bodyPattern !== 'none' && T.bodyPattern.labels[p.bodyPattern], p.zebrinus && p.snakeskin !== 'cobra' && 'Zebrinus', p.metalGold && 'Metal gold',
+    p.micariff && 'Micariff', p.purpleBody !== 'none' && 'Purple', p.pink && 'Pink', p.glassBelly && 'Glass belly'].filter(Boolean);
   return parts.length ? parts.join(' + ') : 'Nenhum';
 };
 
@@ -207,7 +216,8 @@ const RANKED = Object.entries(T).filter(([k, t]) => t.type !== 'number' && t.lab
 const characteristics = p => RANKED.filter(([k, t]) => p[k] !== t.default).length - (p.spinalDefect ? 1 : 0);
 
 // Filters: one "show only" choice per visible trait (key `trait=value`), colours and patterns first.
-const FILTER_ORDER = ['tailColor', 'kohaku', 'snakeskin', 'bodyPattern', 'fullRed', 'tailPattern', 'tailShape', 'bodyBase', 'blau'];
+const FILTER_ORDER = ['tailColor', 'kohaku', 'snakeskin', 'bodyPattern', 'fullRed', 'tailPattern', 'tailShape', 'bodyBase', 'glassBelly', 'metalGold',
+  'purpleBody', 'zebrinus', 'micariff', 'pink', 'blau'];
 /** Can females show this trait value at all? (Male-only colours: a female passes such filters.) */
 const femaleShows = (k, v) => femaleExpression(species, k, v) > 0;
 const FILTER_TRAITS = RANKED.map(([k]) => k).sort((a, b) => (FILTER_ORDER.indexOf(a) + 1 || 99) - (FILTER_ORDER.indexOf(b) + 1 || 99));
@@ -424,6 +434,7 @@ function drawBody(f, fr, viewProj) {
     .i('uSnake', L.snake.id).v3('uSnakeA', L.snake.colA).v3('uSnakeB', L.snake.colB).f('uSnakeK', L.snake.k)
     .v3('uRedA', L.fullRed.colA).v3('uRedB', L.fullRed.colB).f('uRedK', L.fullRed.id ? L.fullRed.k : 0)
     .v3('uKoiA', L.koi.colA).v3('uKoiB', L.koi.colB).f('uKoiK', L.koi.id ? L.koi.k : 0).f('uKoiExt', L.koi.extent).f('uKoiBody', L.koi.body)
+    .f('uZebra', L.zebra.k).v3('uZebraC', L.zebra.color).f('uGold', L.gold.k).v3('uGoldC', L.gold.color).f('uGlass', L.glass).f('uPink', L.pink)
     .f('uTux', L.tuxedo.amount).v3('uTuxColor', L.tuxedo.color);
   body.f('uSide', 1); f.geo.body.draw();
   body.f('uSide', -1); f.geo.body.draw();
@@ -1417,6 +1428,115 @@ function renderFilters() {
   $('filter-sum').textContent = `Filtrar por cor, padrão e ninhada${active ? ` · ${active} ativo${active > 1 ? 's' : ''}` : ''}`;
 }
 
+// ---------- "Isso existe?": pick visible traits, the genetics says if one fish can show them all ----------
+const EXIST_ORDER = ['tailShape', 'kohaku', 'snakeskin', 'bodyPattern', 'fullRed', 'zebrinus', 'metalGold', 'micariff', 'purpleBody', 'pink', 'glassBelly',
+  'bodyBase', 'albino', 'redEye', 'lutino', 'noOrange', 'blau', 'tuxedo', 'tailColor', 'tailPattern', 'tailBorder', 'bigEar'];
+const exist = { sex: 'any', picks: {} };   // trait -> Set of values
+const HAP = { snakeskin: 'snakeskin (corpo e cauda)', cobra: 'snakeskin (corpo e cauda)', lace: 'lace (snakeskin só na cauda)', galaxy: 'galaxy (platinum + snakeskin)',
+  fullRed: 'full red', moscow: 'Moscow', moscowBlack: 'Moscow preto', japanBlue: 'Japan blue', coral: 'coral', platinum: 'platinum', dragon: 'dragon', panda: 'panda',
+  neonBlue: 'neon blue', doubleSword: 'double sword', topSword: 'top sword', bottomSword: 'bottom sword', redTail: 'cauda vermelha', blueTail: 'cauda azul',
+  yellowTail: 'cauda amarela', purpleTail: 'cauda roxa', greenTail: 'cauda verde', multiTail: 'cauda multicolor', ornate: 'manchas selvagens', koi: 'cauda vermelha' };
+const WHERE = { autosomal: 'cromossomo comum: vem do pai e da mãe', X: 'no X: a mãe passa para filhos e filhas, o pai só para as filhas', Y: 'no Y: só de pai para filho' };
+const traitText = (k, v) => (T[k].type === 'bool' ? T[k].label : `${T[k].label}: ${valueLabel(k, v)}`);
+const SEXNAME = { male: 'macho', female: 'fêmea' };
+
+function renderExistPicker() {
+  const box = $('exist-traits');
+  box.replaceChildren(...EXIST_ORDER.filter(k => T[k]).map(k => {
+    const t = T[k], values = t.type === 'bool' ? [true] : t.options.filter(o => o !== t.default);
+    const picked = exist.picks[k] ?? new Set();
+    return el('div', { className: 'exist-group' }, el('span', { textContent: t.type === 'bool' ? '' : t.label }),
+      ...values.map(v => {
+        const b = el('button', { type: 'button', textContent: t.type === 'bool' ? t.label : valueLabel(k, v) });
+        b.setAttribute('aria-pressed', String(picked.has(v)));
+        b.addEventListener('click', () => {
+          const set = exist.picks[k] ??= new Set();
+          set.has(v) ? set.delete(v) : set.add(v);
+          if (!set.size) delete exist.picks[k];
+          renderExistPicker(); scheduleExist();
+        });
+        return b;
+      }));
+  }));
+}
+
+let existTimer = null;
+function scheduleExist() {
+  clearTimeout(existTimer);
+  $('exist-result').replaceChildren(el('p', { className: 'hint', textContent: Object.keys(exist.picks).length ? 'Calculando…' : 'Marque características acima.' }));
+  if (Object.keys(exist.picks).length) existTimer = setTimeout(renderExistResult, 120);
+}
+
+/** Strains of the catalog that already carry an allele the fish needs. */
+function strainsWith(n) {
+  return GUPPY_STRAINS.filter(st => (n.where === 'Y' ? st.y === n.allele
+    : n.locus === 'Xc' ? strainX(st) === n.allele || st.y === n.allele
+    : (st.alleles[n.locus] ?? []).includes(n.allele))).slice(0, 3).map(st => st.name);
+}
+
+/** What an allele shows, in words: "Cor de base: Golden", "Glass belly". */
+function alleleText(n) {
+  if (n.locus === 'Xc' || n.where === 'Y') return HAP[n.allele] ?? n.allele;
+  const locus = [...species.chromosomes.flatMap(c => c.loci), ...species.xChromosome.loci].find(l => l.id === n.locus);
+  const parts = [];
+  for (const e of locus ? (locus.effects ?? [locus.effect]) : []) {
+    const v = e.values ? e.values[n.allele] : e.genotypes ? Object.entries(e.genotypes).find(([g, x]) => g.split('/').every(a => a === n.allele) && x !== null)?.[1] : null;
+    if (v === null || v === undefined || v === false) continue;
+    const text = traitText(e.trait, v);
+    if (!parts.includes(text)) parts.push(text);
+  }
+  return parts.join(' / ') || n.traits.map(k => T[k]?.label).filter(Boolean).join(' / ');
+}
+
+function needLine(n) {
+  const what = alleleText(n);
+  const copies = n.where === 'Y' || (n.where === 'X' && n.copies === 1 && exist.sex === 'male') ? '' : n.copies === 1 ? 'uma cópia basta (dominante)' : 'precisa das duas cópias (recessivo)';
+  const found = strainsWith(n);
+  return el('li', {},
+    el('b', { textContent: `${what} ` }), el('span', { textContent: `(${n.locus} ${n.allele}) — ${WHERE[n.where]}${copies ? `; ${copies}` : ''}.` }),
+    found.length ? el('span', { className: 'exist-src', textContent: ` Onde achar: ${found.join(', ')}.` }) : null,
+    n.tbd ? el('span', { className: 'exist-tbd', textContent: ` Não confirmado: ${n.tbd}.` }) : null);
+}
+
+function renderExistResult() {
+  const out = [];
+  const want = {}, multi = [];
+  for (const [k, set] of Object.entries(exist.picks)) { if (set.size > 1) multi.push(k); else want[k] = [...set][0]; }
+  for (const k of multi) {
+    const vals = [...exist.picks[k]];
+    out.push(el('p', { className: 'no', textContent: `✗ Um peixe só tem um(a) ${T[k].label.toLowerCase()}: você marcou ${vals.map(v => valueLabel(k, v)).join(', ')}.` }));
+    if (k === 'tailShape') {
+      const swords = vals.filter(v => /Sword/.test(v)), deltas = vals.filter(v => ['delta', 'halfMoon', 'veil', 'fan', 'flag'].includes(v));
+      if (swords.length && deltas.length) out.push(el('p', { className: 'hint', textContent: 'Mas dá para carregar: o gene da espada (no X ou Y) fica escondido debaixo do delta e passa para os filhos; volta a aparecer quando não vem gene de delta (F2).' }));
+      if (vals.includes('halfMoon') && vals.includes('delta')) out.push(el('p', { className: 'hint', textContent: 'Half-moon já é um delta: o mesmo formato, aberto até ~180°.' }));
+    }
+  }
+  if (Object.keys(want).length) {
+    const r = canExist(species, want, { sex: exist.sex });
+    const sexes = Object.keys(r.bySex), ok = sexes.filter(sx => r.bySex[sx].ok);
+    const lead = multi.length ? 'O resto junto: ' : '';
+    out.push(el('p', { className: ok.length ? 'yes' : 'no', textContent: lead + (ok.length === sexes.length
+      ? `✓ Existe${sexes.length === 2 ? ' em macho e em fêmea' : ` (${SEXNAME[sexes[0]]})`}.`
+      : ok.length ? `✓ Existe só em ${SEXNAME[ok[0]]}.` : '✗ Não existe: a genética não deixa.') }));
+    const why = new Set();
+    for (const sx of sexes.filter(x => !r.bySex[x].ok)) {
+      const b = r.bySex[sx];
+      for (const m of b.missing) why.add(`${sx === 'female' ? 'Em fêmea' : 'Em macho'}: ${traitText(m.trait, m.value)} não aparece${sx === 'female' ? ' (gene que só age no macho)' : ' (nenhum gene do jogo faz isso nesse sexo)'}.`);
+      for (const m of b.masks) why.add(`${traitText(m.hider, m.hiderValue)} esconde ${traitText(m.hidden, m.hiddenValue).toLowerCase()}: o gene pode estar lá, mas não aparece.`);
+    }
+    for (const text of why) out.push(el('p', { className: 'hint', textContent: text }));
+    const how = ok.length ? r.bySex[ok[0]] : null;
+    if (how) {
+      const poly = how.needs.filter(n => n.polygenic), single = how.needs.filter(n => !n.polygenic);
+      const polyTraits = [...new Set(poly.flatMap(n => n.traits))];
+      out.push(el('p', { className: 'hint', textContent: `Genes${ok.length < sexes.length || sexes.length === 1 ? ` (${SEXNAME[ok[0]]})` : ''}:` }),
+        el('ul', {}, ...single.map(needLine),
+          ...polyTraits.map(k => el('li', {}, el('b', { textContent: `${T[k].label} alta ` }), el('span', { textContent: '— muitos genes pequenos: sobe aos poucos com seleção.' })))));
+    }
+  }
+  $('exist-result').replaceChildren(...out);
+}
+
 /** Recompute the list and the fish in the aquarium after any change to the tank or the filters. */
 function refresh() {
   view.cullArmed = false; view.resetArmed = false; view.cullBrood = null;
@@ -1631,6 +1751,9 @@ if (SOFTWARE_GL) {
   $('gpu-note').hidden = false;
   $('gpu-note').textContent = 'O navegador está desenhando sem placa de vídeo (' + RENDERER.slice(0, 60) + '). Comecei sem o filtro e em resolução baixa. Ative "Usar aceleração de hardware" nas configurações do navegador e recarregue para ver a pintura.';
 }
+$('exist-sex').addEventListener('change', e => { exist.sex = e.target.value; scheduleExist(); });
+$('exist-clear').addEventListener('click', () => { exist.picks = {}; renderExistPicker(); scheduleExist(); });
+renderExistPicker(); scheduleExist();
 $('mom-thumb').addEventListener('click', () => setPick(breeding.motherId));
 $('dad-thumb').addEventListener('click', () => setPick(breeding.fatherId));
 $('mode-catalog').addEventListener('click', () => { state.mode = 'catalog'; state.focus = -1; loadTank(); });

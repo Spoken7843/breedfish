@@ -40,10 +40,22 @@ export const GUPPY_STRAINS = [
     note: 'Corrente escura sobre o corpo e rosetas na cauda (Ssb, ligado ao Y).' },
   { id: 'goldenSnakeskin', name: 'Golden snakeskin', y: 'snakeskin', alleles: fancy({ Gol: hom('g'), Sat: hom('H') }),
     note: 'Snakeskin sobre base golden (g/g, kita).' },
-  { id: 'kingCobra', name: 'King cobra', y: 'cobra', alleles: fancy({}, 'Vl'),
-    note: 'Rosetas e barras verticais na parte de trás do corpo.' },
+  { id: 'kingCobra', name: 'King cobra', y: 'snakeskin', alleles: fancy({ Ze: hom('Ze') }, 'Vl'),
+    note: 'Snakeskin (Ssb/Sst, no X ou Y) com as barras verticais do Zebrinus (autossômico dominante).' },
   { id: 'galaxy', name: 'Galaxy', y: 'galaxy', alleles: fancy({}),
-    note: 'Um Y que carrega dois genes juntos: platinum na frente do corpo e snakeskin no resto.' },
+    note: 'Um Y que carrega dois genes juntos: platinum (só do Y) na frente do corpo e snakeskin no resto.' },
+  { id: 'redLace', name: 'Red lace', y: 'lace', alleles: fancy({ Fc: hom('R'), Sat: hom('H') }),
+    note: 'Só o snakeskin da cauda (Sst, o "lacetail"): renda fina na cauda vermelha, corpo sem corrente.' },
+  { id: 'blueLace', name: 'Blue lace', y: 'lace', alleles: fancy({ Fc: hom('Bl') }),
+    note: 'Renda snakeskin só na cauda, sobre azul.' },
+  { id: 'yellowSnakeskin', name: 'Metal yellow lace (yellow snakeskin)', y: 'snakeskin', alleles: fancy({ Mg: hom('Mg'), Fc: hom('Ye'), Sat: hom('H') }),
+    note: 'Snakeskin com Metal Gold e sem Asian Blau, que apagaria o amarelo.' },
+  { id: 'metalLaceGold', name: 'Metal lace gold', y: 'lace', alleles: fancy({ Mg: hom('Mg'), Gol: hom('g'), Fc: hom('Ye'), Sat: hom('H') }),
+    note: 'Metal Gold sobre golden, com renda na cauda.' },
+  { id: 'koiCobra', name: 'Koi cobra', y: 'snakeskin', alleles: fancy({ Ko: hom('Ko'), Ze: hom('Ze'), Fc: hom('R'), Sat: hom('H') }), koi: true,
+    note: 'Cabeça vermelha do koi sobre king cobra (snakeskin + zebrinus).' },
+  { id: 'tiger', name: 'Tiger', y: 'ornate', alleles: fancy({ Ze: hom('Ze'), Mg: hom('Mg'), Fc: hom('Ye') }),
+    note: 'Barras do Zebrinus "com falhas que mostram as outras cores"; composição exata da linhagem não publicada.' },
   { id: 'blueMosaic', name: 'Mosaico azul · Blue Mosaic', y: 'blueTail', alleles: fancy({ Mo: hom('Mo'), Fc: hom('Bl') }),
     note: 'Cauda em ladrilhos irregulares escuros sobre azul.' },
   { id: 'redGrass', name: 'Grass vermelho · Red Grass', y: 'redTail', alleles: fancy({ Gra: hom('Gra'), Fc: hom('R'), Sat: hom('H') }),
@@ -78,6 +90,28 @@ export const GUPPY_STRAINS = [
   { id: 'coral', name: 'Coral', y: 'coral', alleles: fancy({ Fc: hom('R'), Sat: hom('H') }),
     note: 'Vermelho metálico na frente do corpo.' },
   // ---- eye and body mutations ----
+  { id: 'redGlass', name: 'Red glass belly', y: 'redTail', alleles: fancy({ Gb: hom('gb'), Fc: hom('R'), Sat: hom('H') }),
+    note: 'Glass belly (gb/gb, recessivo): a barriga não tem o forro prateado e mostra os órgãos.' },
+  { id: 'albinoGlass', name: 'Albino red tail glass belly', y: 'redTail', alleles: fancy({ Gb: hom('gb'), Alb: hom('a'), Fc: hom('R'), Sat: hom('H') }),
+    note: 'Albino + glass belly: quase transparente; na fêmea dá para ver os filhotes dentro.' },
+  { id: 'goldKoiGlass', name: 'Gold koi glass belly', y: 'redTail', alleles: fancy({ Ko: hom('Ko'), Gol: hom('g'), Gb: hom('gb'), Fc: hom('R'), Sat: hom('H') }), koi: true,
+    note: 'Golden + koi + glass belly: existe à venda com esse nome.' },
+  { id: 'purple', name: 'Purple delta', y: 'purpleTail', alleles: fancy({ Pb: hom('Pb'), Fc: hom('Pu') }),
+    note: 'Purple Body em dose dupla: laranja vira rosa-arroxeado. O "all purple" de exposição precisa de mais um gene ainda não identificado.' },
+  { id: 'moscowPurple', name: 'Moscow purple', y: 'moscow', alleles: fancy({ Pb: hom('Pb'), Fc: hom('Pu') }, 'Vl'),
+    note: 'Moscow com Purple Body, que puxa o corpo para violeta.' },
+  { id: 'micariff', name: 'Yellow micariff', y: 'yellowTail', alleles: fancy({ Mic: hom('mc'), Fc: hom('Ye'), Sat: hom('H') }),
+    note: 'Amarelo recessivo do Sri Lanka, origem guardada em segredo; só aparece no F2.' },
+  { id: 'pinkWhite', name: 'Pink white', y: 'plain', alleles: fancy({ Pk: hom('p'), Fc: hom('Pa') }),
+    note: 'Pink (p/p): branco translúcido no fim do corpo.' },
+  { id: 'japanBlueRed', name: 'Japan blue red tail', y: 'japanBlue', alleles: fancy({ Fc: hom('R'), Sat: hom('H') }),
+    note: 'Azul do Japan Blue (só no Y) com cauda vermelha.' },
+  { id: 'moscowAlbino', name: 'Blue moscow albino', y: 'moscow', alleles: fancy({ Alb: hom('a'), Fc: hom('Bl') }, 'Vl'),
+    note: 'Moscow sem melanina: azul claro e brilhante.' },
+  { id: 'snakeskinAlbino', name: 'Snakeskin albino red tail', y: 'snakeskin', alleles: fancy({ Alb: hom('a'), Fc: hom('R'), Sat: hom('H') }),
+    note: 'Snakeskin sem melanina: a corrente fica laranja.' },
+  { id: 'dumboDragon', name: 'Dumbo dragon', y: 'dragon', alleles: fancy({ Dum: hom('du'), Fc: hom('R'), Sat: hom('H') }),
+    note: 'Escamas metálicas de dragon com peitorais de dumbo.' },
   { id: 'fullRedAlbino', name: 'RREA Full Red', y: 'fullRed', alleles: fancy({ Alb: hom('a'), Fc: hom('R'), Sat: hom('H') }),
     note: 'Albino de olho vermelho, corpo e nadadeiras vermelhos. A fêmea também fica avermelhada, mais fraca.' },
   { id: 'rre', name: 'RRE Red · real red eye', y: 'redTail', alleles: fancy({ Rre: hom('re'), Fc: hom('R'), Sat: hom('H') }),
@@ -99,8 +133,8 @@ export const GUPPY_STRAINS = [
     note: 'Espada só no raio de baixo.' },
   { id: 'lyre', name: 'Lyretail neon', y: 'blueTail', alleles: fancy({ Lyr: ['Lyr', '+'], Fc: hom('Bl') }, 'Rd'),
     note: 'Centro curto e raios de cima e de baixo alongados em curva.' },
-  { id: 'halfMoon', name: 'Half-moon blue', y: 'blueTail', alleles: fancy({ Fc: hom('Bl') }, 'Hm'),
-    note: 'Cauda abrindo quase 180 graus.' },
+  { id: 'halfMoon', name: 'Half-moon blue', y: 'blueTail', alleles: fancy({ Fc: hom('Bl') }, 'Dl'),
+    note: 'Um delta que abre ~180 graus: half-moon não é gene, é abertura (muitos genes); parte dos filhos sai delta comum.' },
   { id: 'fantail', name: 'Fantail red', y: 'redTail', alleles: fancy({ Fc: hom('R') }, 'Fn'),
     note: 'Leque de bordas arredondadas.' },
   { id: 'flag', name: 'Flag (scarf) purple', y: 'purpleTail', alleles: fancy({ Fc: hom('Pu') }, 'Fl'),
@@ -127,13 +161,14 @@ export function strainQuant(strain) {
   if (strain.koi) return { ...Q_FANCY, headRed: 0.7 };   // koi lines are selected for a big red cap
   if (strain.id === 'wild') return Q_WILD;
   if (SHORT_TAILS.has(strain.id)) return Q_SHORT;
-  if (strain.id === 'halfMoon') return { ...Q_FANCY, tailSpread: 0.92 };
+  if (strain.id === 'halfMoon') return { ...Q_FANCY, tailSpread: 0.97 };
   return Q_FANCY;
 }
 
 /** Haplotypes the sources describe as Y-linked only (docs/research.md): the line's females carry nothing of them. */
 // Panda is a Moscow form (Bias: "Pink Moscow (Panda)"), so it is Y-only too (v7).
-export const Y_ONLY_PATTERNS = new Set(['moscow', 'moscowBlack', 'japanBlue', 'coral', 'panda']);
+// Platinum (Schimmelpfennig) is Y-linked dominant [28], so galaxy (platinum + snakeskin) is a Y haplotype too (v8).
+export const Y_ONLY_PATTERNS = new Set(['moscow', 'moscowBlack', 'japanBlue', 'coral', 'panda', 'platinum', 'galaxy']);
 
 /** Sex-linked pattern a strain carries on its X chromosomes (both sexes); `strain.x` overrides. */
 export function strainX(strain) {

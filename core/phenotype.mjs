@@ -98,8 +98,10 @@ export function phenotype(species, fish, { ageDays = 100, temperatureC = 26, gro
     if (t.sexLimited && t.sexLimited !== observedSex) value = t.type === 'number' ? t.base : t.default;
     traits[name] = value;
   }
+  // a condition: {trait, equals} | {trait, in: [...]} | {trait, atLeast: n}; `when` may list several (all must hold)
+  const holds = c => ('equals' in c ? traits[c.trait] === c.equals : 'in' in c ? c.in.includes(traits[c.trait]) : traits[c.trait] >= c.atLeast);
   for (const rule of species.epistasis ?? []) {
-    if (traits[rule.when.trait] !== rule.when.equals) continue;
+    if (!(Array.isArray(rule.when) ? rule.when : [rule.when]).every(holds)) continue;
     Object.assign(traits, rule.set ?? {});
     // map: turn some values of a trait into others (e.g. no red pigment: a red tail shows white)
     for (const [name, table] of Object.entries(rule.map ?? {})) if (traits[name] in table) traits[name] = table[traits[name]];

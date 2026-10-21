@@ -135,6 +135,7 @@ uniform int uPat; uniform vec3 uPatA, uPatB; uniform float uMetal, uPatK;
 uniform int uSnake; uniform vec3 uSnakeA, uSnakeB; uniform float uSnakeK;
 uniform vec3 uRedA, uRedB; uniform float uRedK;
 uniform vec3 uKoiA, uKoiB; uniform float uKoiK, uKoiExt, uKoiBody;
+uniform vec3 uZebraC, uGoldC; uniform float uZebra, uGold, uGlass, uPink;
 uniform float uTux; uniform vec3 uTuxColor; uniform float uBrush;
 ${COMMON}
 ${LIGHT}
@@ -162,6 +163,15 @@ void main(){
   // ---- variety body colour, in layers: full red, snakeskin chain, metallic/solid pattern, Kohaku head ----
   float headMask = smoothstep(0.16, 0.26, u);
   float metal = 0.0;
+  if (uGlass > 0.0) {                      // glass belly: no silvery lining, the gut (and a female's brood) show
+    float belly = smoothstep(-0.28, -0.55, v) * smoothstep(0.13, 0.22, u) * smoothstep(0.78, 0.62, u);
+    vec3 organs = mix(vec3(0.66, 0.42, 0.36), vec3(0.24, 0.19, 0.17), smoothstep(0.42, 0.62, fbm(bp * vec2(9.0, 15.0) + uSeed)));
+    albedo = mix(albedo, organs, belly * 0.78);
+    vec2 eg = vec2(u * 60.0, v * 6.0);
+    float eye = smoothstep(0.2, 0.1, length(fract(eg) - 0.5)) * step(0.45, hash12(floor(eg) + uSeed));
+    float brood = belly * smoothstep(0.38, 0.46, u) * smoothstep(0.7, 0.6, u) * uGravid;
+    albedo = mix(albedo, vec3(0.04, 0.04, 0.05), eye * brood * 0.9);
+  }
   if (uRedK > 0.0) {                       // full red: red over the whole body (fainter in females)
     float m = smoothstep(0.02, 0.1, u) * smoothstep(-0.95, -0.5, v);
     albedo = mix(albedo, mix(uRedA, uRedB, 0.3 * fbm(bp * 10.0 + uSeed)), m * 0.88 * uRedK);
@@ -180,6 +190,10 @@ void main(){
       albedo = mix(albedo, uSnakeB, bars * 0.75 * uSnakeK);
     }
     metal = max(metal, 0.15 * ground);
+  }
+  if (uZebra > 0.0) {                      // Zebrinus: vertical bars on the peduncle and rear body
+    float bars = smoothstep(0.35, 0.8, sin(u * 62.0 + (vnoise(vec2(u * 7.0, yN * 18.0) + uSeed) - 0.5) * 3.2)) * smoothstep(0.42, 0.6, u) * smoothstep(-0.75, -0.25, v);
+    albedo = mix(albedo, uZebraC, bars * 0.8 * uZebra);
   }
   float pk = uPatK;
   if (uPat == 3) {                         // moscow: solid metallic colour over the whole body
@@ -207,6 +221,15 @@ void main(){
     float head = (1.0 - body) * smoothstep(-0.6, 0.0, v) * pk;
     albedo = mix(albedo, uPatA, body * 0.92);
     albedo = mix(albedo, mix(uPatB, vec3(1.0), 0.3 * (1.0 - ndv)), head * 0.8); metal = max(metal, head * uMetal + body * 0.25);
+  }
+  if (uGold > 0.0) {                       // Metal Gold: metallic yellow over the upper body and head
+    float m = smoothstep(0.04, 0.12, u) * smoothstep(0.88, 0.62, u) * smoothstep(-0.35, 0.25, v) * (0.75 + 0.25 * fbm(bp * 12.0 + uSeed));
+    albedo = mix(albedo, mix(uGoldC, vec3(1.0, 0.95, 0.7), 0.3 * (1.0 - ndv)), m * 0.8 * uGold);
+    metal = max(metal, m * 0.8 * uGold);
+  }
+  if (uPink > 0.0) {                       // Pink: translucent white on the rear peduncle
+    float m = smoothstep(0.72, 0.86, u) * smoothstep(-0.9, -0.4, v);
+    albedo = mix(albedo, vec3(0.96, 0.92, 0.95), m * 0.7 * uPink);
   }
   if (uKoiK > 0.0) {                       // Kohaku: red cap from the snout back to a reach set by the genes
     float reach = 0.2 + 0.3 * uKoiExt;
