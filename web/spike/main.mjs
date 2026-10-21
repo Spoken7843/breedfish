@@ -421,7 +421,7 @@ function common(prog, f, fr, viewProj) {
   return prog.m4('uViewProj', viewProj).m4('uModel', fr.model).m3('uNormalMat', fr.normalMat).v4('uSpine', f.spine)
     .f('uCam', ...camera.eye).f('uFogColor', 0.12, 0.25, 0.24).f('uFogRange', BASE_DIST - 1.5, BASE_DIST + 4.5)
     .f('uTime', fr.t).f('uSeed', f.look.seed).f('uChroma', 0.55 + f.p.saturation).f('uMelanin', f.look.melanin)
-    .f('uBrush', state.oil ? state.texture : 0);
+    .f('uBrush', state.oil ? state.texture : 0).f('uCaustic', fr.caustic ?? 1);
 }
 
 function drawBody(f, fr, viewProj) {
@@ -432,7 +432,7 @@ function drawBody(f, fr, viewProj) {
   body.f('uLb', L.length).v3('uDorsal', L.colors.dorsal).v3('uFlank', L.colors.flank).v3('uBelly', L.colors.belly)
     .f('uRetic', L.reticulation).f('uSheen', L.sheen).f('uGravid', L.gravid).f('uSex', L.sex === 'male' ? 1 : 0)
     .v4('uSpotA', spotA).v4('uSpotB', spotB).i('uSpotCount', Math.min(8, L.spots.length))
-    .f('uEye', L.eye.u, L.eye.y, L.eye.radius, 0).v3('uPupil', L.eye.pupil)
+    .f('uEye', L.eye.u, L.eye.y, L.eye.radius, 0).v3('uPupil', L.eye.pupil).v3('uIris', L.eye.iris).f('uIrisDark', L.eye.irisDark)
     .i('uPat', L.bodyPattern.id).v3('uPatA', L.bodyPattern.colA).v3('uPatB', L.bodyPattern.colB).f('uMetal', L.bodyPattern.metal).f('uPatK', L.bodyPattern.k)
     .i('uSnake', L.snake.id).v3('uSnakeA', L.snake.colA).v3('uSnakeB', L.snake.colB).f('uSnakeK', L.snake.k)
     .v3('uRedA', L.fullRed.colA).v3('uRedB', L.fullRed.colB).f('uRedK', L.fullRed.id ? L.fullRed.k : 0)
@@ -447,7 +447,7 @@ function drawFins(f, fr, viewProj) {
   const L = f.look, sw = fr.sw, fin = progs.fin.use();
   common(fin, f, fr, viewProj);
   const hover = 1 - Math.min(1, sw.effort);
-  fin.f('uFlutPhase', sw.phase * 1.3).f('uPecBeta', 0.55 + (0.22 + 0.25 * hover) * Math.sin(fr.t * 2 * Math.PI * 2.2 + L.swim.phase));
+  fin.f('uLb', L.length).f('uFlutPhase', sw.phase * 1.3).f('uPecBeta', 0.55 + (0.22 + 0.25 * hover) * Math.sin(fr.t * 2 * Math.PI * 2.2 + L.swim.phase));
   const draw = (geo, F, kind, side = 1) => {
     fin.v3('uColA', F.colorA).v3('uColB', F.colorB ?? F.colorA).f('uAlpha', F.alpha).f('uSpeckle', F.speckle ?? 0)
       .f('uBorder', F.border ?? 0).f('uIri', F.iridescence ?? 0.1).i('uKind', kind)
@@ -461,6 +461,7 @@ function drawFins(f, fr, viewProj) {
   draw(f.geo.pectoral, L.pectoral, 3, -near);
   draw(f.geo.caudal, L.tail, 0);
   draw(f.geo.dorsal, L.dorsalFin, 1);
+  if (f.geo.pelvic) draw(f.geo.pelvic, L.pelvic, 4);
   draw(f.geo.anal, L.anal, 2);
   draw(f.geo.pectoral, L.pectoral, 3, near);
 }
@@ -544,7 +545,7 @@ function renderThumb({ look, p }) {
   const f = { look, geo, p, spine: new Float32Array(SPINE_SAMPLES * 4) };
   spineAt(look, geo, 1.3, 0.45, 0, f.spine);
   const model = mat4.model([0, 0, 0], 0, 0, 1, 1);
-  const fr = { sw: { effort: 0.35, phase: 1.3 }, model, normalMat: mat4.normalFromModel(model, 1), t: 0 };
+  const fr = { sw: { effort: 0.35, phase: 1.3 }, model, normalMat: mat4.normalFromModel(model, 1), t: 0, caustic: 0 };
   // frame the whole fish, tail included, broadside from its +z flank
   const ext = restExtent(look), aspect = THUMB_W / THUMB_H, tan = Math.tan(FOV / 2);
   const cx = (ext.xMin + ext.xMax) / 2, cy = (ext.yMin + ext.yMax) / 2;

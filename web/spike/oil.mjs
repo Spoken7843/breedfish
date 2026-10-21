@@ -51,7 +51,7 @@ export function createOil(gl, floatRT) {
     pass(progs.kuwahara, kuw, p => p.tex('uSrc', 0, scene.tex).tex('uTfm', 1, tfmA.tex).f('uTexel', ...small)
       .f('uRadius', radius).f('uQ', 8).f('uAlpha', 1).f('uHardness', 8).f('uZeroCross', 0.58));
     pass(progs.strokes, strokes, p => p.tex('uTfm', 0, tfmA.tex).f('uTexel', ...small).f('uRes', rt.sw, rt.sh));
-    pass(progs.paint, null, p => p.tex('uSrc', 0, kuw.tex).tex('uStrokes', 1, strokes.tex).f('uTexel', ...full).f('uSmallTexel', ...small).f('uRes', rt.w, rt.h)
+    pass(progs.paint, null, p => p.tex('uSrc', 0, kuw.tex).tex('uStrokes', 1, strokes.tex).tex('uScene', 2, scene.tex).f('uDetail', settings.detail ?? 0.65).f('uTexel', ...full).f('uSmallTexel', ...small).f('uRes', rt.w, rt.h)
       .f('uStroke', settings.stroke).f('uImpasto', settings.impasto).f('uCanvas', settings.canvas));
   }
 

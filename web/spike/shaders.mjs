@@ -30,8 +30,31 @@ vec4 spineAt(float st){
 `;
 
 const LIGHT = /* glsl */`
-uniform vec3 uCam; uniform vec3 uFogColor; uniform vec2 uFogRange;
+uniform vec3 uCam; uniform vec3 uFogColor; uniform vec2 uFogRange; uniform float uTime, uCaustic;
 const vec3 LIGHT_DIR = vec3(-0.27, 0.88, 0.40);
+// Relief without a tangent frame (Mikkelsen 2010): h is a height in world units over the surface.
+vec3 bumpNormal(vec3 N, vec3 P, float h){
+  vec3 dpdx = dFdx(P), dpdy = dFdy(P);
+  vec3 r1 = cross(dpdy, N), r2 = cross(N, dpdx);
+  float det = dot(dpdx, r1);
+  if (abs(det) < 1e-12) return N;
+  vec3 grad = sign(det) * (dFdx(h) * r1 + dFdy(h) * r2);
+  return normalize(abs(det) * N - grad);
+}
+// Dappled light from the rippling surface, drifting over the fish as it swims.
+float caustic(vec3 P, vec3 N){
+  vec2 p = vec2(P.x + P.z * 0.6, P.y * 0.85 - P.z * 0.3) * 3.2;
+  vec2 w1 = worley(p + vec2(uTime * 0.23, uTime * 0.11));
+  vec2 w2 = worley(p * 1.41 + vec2(-uTime * 0.17, uTime * 0.2) + 5.2);
+  float c = (1.0 - smoothstep(0.0, 0.2, w1.y - w1.x)) * (0.45 + 0.55 * (1.0 - smoothstep(0.0, 0.3, w2.y - w2.x)));
+  return c * (0.35 + 0.65 * smoothstep(-0.4, 0.8, N.y)) * uCaustic;
+}
+// What a mirror-like surface (silver lining, guanine) reflects: bright surface above, green depths below.
+vec3 envRefl(vec3 N, vec3 V){
+  vec3 R = reflect(-V, N);
+  vec3 up = vec3(0.86, 0.93, 0.84), mid = vec3(0.30, 0.44, 0.42), low = vec3(0.06, 0.12, 0.12);
+  return R.y > 0.0 ? mix(mid, up, smoothstep(0.0, 0.75, R.y)) : mix(mid, low, smoothstep(0.0, -0.6, R.y));
+}
 vec3 shade(vec3 albedo, vec3 N, vec3 P, float gloss, float sheen){
   vec3 V = normalize(uCam - P);
   if (dot(N, V) < 0.0) N = -N;
@@ -43,6 +66,8 @@ vec3 shade(vec3 albedo, vec3 N, vec3 P, float gloss, float sheen){
   col += spec * vec3(1.0, 0.97, 0.88);
   float rim = pow(1.0 - max(dot(N, V), 0.0), 2.5);
   col += rim * vec3(0.20, 0.34, 0.33) * (0.35 + sheen * 0.4);
+  float cs = caustic(P, N);
+  col += albedo * vec3(1.0, 0.97, 0.85) * cs * 0.42 + cs * spec * 0.6;
   return col;
 }
 vec3 fog(vec3 col, vec3 P){
@@ -131,6 +156,7 @@ uniform vec3 uDorsal, uFlank, uBelly, uPupil;
 uniform float uMelanin, uRetic, uSheen, uGravid, uSeed, uChroma, uSex;
 uniform vec4 uSpotA[8]; uniform vec4 uSpotB[8]; uniform int uSpotCount;
 uniform vec4 uEye; // u, y, radius
+uniform vec3 uIris; uniform float uIrisDark, uLb;
 uniform int uPat; uniform vec3 uPatA, uPatB; uniform float uMetal, uPatK;
 uniform int uSnake; uniform vec3 uSnakeA, uSnakeB; uniform float uSnakeK;
 uniform vec3 uRedA, uRedB; uniform float uRedK;
@@ -143,18 +169,42 @@ void main(){
   float u = vBody.x, yN = vBody.y, v = vBody.z;
   vec3 N = normalize(vN);
   vec3 V = normalize(uCam - vPos);
+  if (dot(N, V) < 0.0) N = -N;
   float ndv = abs(dot(N, V));
   vec2 bp = vec2(u, yN);
   // countershading
   vec3 albedo = v > 0.0 ? mix(uFlank, uDorsal, smoothstep(0.1, 0.92, v)) : mix(uFlank, uBelly, smoothstep(-0.05, -0.8, v));
   albedo *= 0.94 + 0.12 * fbm(bp * vec2(18.0, 30.0) + uSeed);
-  // melanophore reticulation on the scale lattice (imbricate rows)
+  // Scales: staggered rows of round scales laid like roof tiles. Each point shows the most anterior scale
+  // that covers it, so every scale exposes its rounded rear margin; melanophores along those margins make
+  // the reticulated net of a guppy's flank.
   vec2 q = vec2(u, yN) / 0.024;
-  q.x += 0.5 * mod(floor(q.y), 2.0);
-  vec2 cell = fract(q) - 0.5;
-  float edgeD = length(cell * vec2(1.0, 1.2)) + (vnoise(q * 1.7 + uSeed) - 0.5) * 0.14;
-  float scaleEdge = smoothstep(0.34, 0.5, edgeD) * smoothstep(-0.45, 0.2, v) * smoothstep(0.1, 0.2, u) * (0.6 + 0.4 * vnoise(q * 0.35));
+  const float SR = 0.72;
+  vec2 sc = vec2(0.0), sid = vec2(0.0); float best = 1e9;
+  float j0 = floor(q.y);
+  for (int dj = -1; dj <= 1; dj++){
+    float j = j0 + float(dj), off = 0.5 * mod(j, 2.0), i0 = floor(q.x - off);
+    for (int di = -1; di <= 1; di++){
+      vec2 c = vec2(i0 + float(di) + off + 0.5, j + 0.5);
+      vec2 d = q - c - (hash22(c + uSeed) - 0.5) * 0.1;
+      if (length(d) < SR && c.x < best){ best = c.x; sc = d; sid = c; }
+    }
+  }
+  float sr = length(sc);
+  float margin = smoothstep(SR - 0.2, SR - 0.04, sr) * smoothstep(-0.1, 0.25, sc.x);
+  float scaleEdge = margin * smoothstep(-0.45, 0.2, v) * smoothstep(0.1, 0.2, u) * (0.6 + 0.4 * vnoise(q * 0.35));
   albedo = mix(albedo, albedo * vec3(0.55, 0.55, 0.52), scaleEdge * uRetic);
+  // relief: each scale rises from under the one in front toward its free rear margin and rolls off there,
+  // tilted a little at random so the flank breaks the light into glints as the fish turns
+  float scaleH = smoothstep(-0.2, SR * 0.85, sc.x) * (1.0 - smoothstep(SR - 0.24, SR, sr));
+  scaleH *= 1.0 + (hash12(sid + uSeed * 1.3) - 0.5) * 0.8 + sc.y * (hash12(sid + 2.7) - 0.5) * 1.2;
+  float scaleVis = (1.0 - smoothstep(0.15, 0.4, fwidth(q.x))) * smoothstep(-0.8, -0.3, v) * smoothstep(0.13, 0.22, u);
+  N = bumpNormal(N, vPos, scaleH * 0.0016 * uLb * scaleVis);
+  albedo *= 1.0 + (hash12(sid + 9.1) - 0.5) * 0.1 * scaleVis;   // each scale reflects a little differently
+  // fine melanophores: dark pinpoints, denser on the back
+  vec2 mq = bp / 0.0065; vec2 mc = floor(mq);
+  float mdot = smoothstep(0.32, 0.12, length(fract(mq) - 0.5 - (hash22(mc + 4.1) - 0.5) * 0.5)) * step(0.55, hash12(mc + uSeed));
+  albedo *= 1.0 - mdot * 0.3 * uMelanin * smoothstep(-0.4, 0.7, v) * (1.0 - smoothstep(0.15, 0.4, fwidth(mq.x))) * smoothstep(0.03, 0.1, u);
   // male iridophore sheen: view-dependent hue on the flank
   float sheenMask = smoothstep(0.55, 0.8, fbm(bp * vec2(7.0, 12.0) + uSeed * 1.7)) * smoothstep(0.15, 0.3, u) * smoothstep(0.95, 0.75, u) * smoothstep(0.75, 0.2, abs(v));
   vec3 irid = hsv2rgb(vec3(fract(0.48 + 0.35 * (1.0 - ndv) + 0.1 * fbm(bp * 9.0)), 0.55 * uChroma, 0.95));
@@ -266,6 +316,11 @@ void main(){
   // gravid spot (female)
   float gs = smoothstep(0.07, 0.02, length(vec2(u - 0.62, (v + 0.42) * 0.1)) + (fbm(bp * 30.0) - 0.5) * 0.03);
   albedo = mix(albedo, vec3(0.12, 0.10, 0.08), gs * uGravid * 0.7);
+  // the upturned mouth at the snout tip and the nostril in front of the eye
+  vec2 ma = vec2(0.001, 0.006), mb = vec2(0.03, -0.003), pa = bp - ma, ba = mb - ma;
+  float mouth = smoothstep(0.0032, 0.0012, length(pa - ba * clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0)));
+  albedo *= 1.0 - 0.45 * mouth;
+  albedo *= 1.0 - 0.5 * smoothstep(0.005, 0.0025, length(bp - vec2(uEye.x - uEye.z * 1.15, uEye.y + uEye.z * 0.35)));
   // operculum line and darker head top
   float gill = abs(length((bp - vec2(0.085, 0.0)) * vec2(1.0, 0.85)) - 0.085);
   albedo *= 1.0 - 0.22 * smoothstep(0.006, 0.0, gill) * step(-0.75, v) * step(u, 0.2) * uMelanin;
@@ -278,16 +333,39 @@ void main(){
   albedo *= mix(vec3(1.0), broad > 0.5 ? vec3(1.04, 1.0, 0.95) : vec3(0.96, 0.99, 1.04), abs(broad - 0.5) * 1.6 * uBrush);
   vec3 col = shade(albedo, N, vPos, 0.35 + 0.35 * uSheen + metal * 0.9, uSheen + metal);
   col += metal * pow(1.0 - ndv, 1.5) * 0.25 * hsv2rgb(vec3(fract(0.55 + 0.3 * (1.0 - ndv)), 0.3, 1.0));
-  // eye
+  // guanine mirrors: the silvery lining of the belly (seen through unpigmented skin; glass bellies lack
+  // it) and the gill cover, which shimmers gold to green
+  float fres = pow(1.0 - ndv, 1.2);
+  float silver = smoothstep(-0.1, -0.5, v) * smoothstep(0.1, 0.2, u) * smoothstep(0.72, 0.55, u) * (1.0 - uGlass) * smoothstep(0.22, 0.7, luma(albedo));
+  col = mix(col, envRefl(N, V) * mix(vec3(0.95, 0.97, 1.0), albedo, 0.3), silver * (0.3 + 0.4 * fres));
+  float operD = length((bp - vec2(0.085, 0.0)) * vec2(1.0, 0.85));
+  float oper = smoothstep(0.085, 0.07, operD) * smoothstep(0.1, 0.135, u) * smoothstep(-0.85, -0.45, v) * smoothstep(0.7, 0.25, v);
+  vec3 operTint = hsv2rgb(vec3(fract(0.1 + 0.3 * (1.0 - ndv) + 0.08 * vnoise(bp * 80.0)), 0.35, 1.0));
+  col = mix(col, envRefl(N, V) * operTint * 1.1, oper * (0.2 + 0.25 * fres) * (1.0 - 0.6 * uKoiK));
+  // thin edges and the peduncle let light through, warm
+  float thin = smoothstep(0.78, 1.0, abs(v)) * 0.6 + smoothstep(0.8, 1.0, u) * 0.5;
+  col += albedo * vec3(1.0, 0.8, 0.66) * thin * (0.06 + 0.3 * max(0.0, dot(-N, normalize(LIGHT_DIR))));
+  // eye: dark pupil, a silvery-gold iris with fine fibres and a darker upper rim, a bulging cornea
   vec2 ed = (bp - uEye.xy) / uEye.z;
   float er = length(ed);
-  if (er < 1.15){
-    vec3 iris = mix(vec3(0.80, 0.80, 0.74), vec3(0.40, 0.40, 0.36), smoothstep(0.72, 1.0, er));
-    vec3 e = mix(uPupil, iris, smoothstep(0.66, 0.74, er));
-    e = mix(e, vec3(0.08, 0.08, 0.07), smoothstep(0.9, 1.0, er));
-    float hl = smoothstep(0.22, 0.0, length(ed - vec2(-0.25, 0.3)));
-    e += hl * 0.9;
-    col = mix(col, e, smoothstep(1.15, 1.0, er));
+  if (er < 1.3){
+    float ang = atan(ed.y, ed.x);
+    float fib = vnoise(vec2(ang * 9.0, er * 3.0) + uSeed) * 0.6 + vnoise(vec2(ang * 23.0, er * 7.0)) * 0.4;
+    vec3 iris = uIris * (0.7 + 0.5 * fib);
+    iris = mix(iris, iris * 0.35, smoothstep(0.05, 0.85, ed.y) * uIrisDark);
+    iris = mix(iris, min(uIris * 1.3 + 0.08, vec3(1.0)), smoothstep(0.66, 0.57, er) * 0.8);
+    vec3 pupil = uPupil * (0.55 + 0.45 * smoothstep(0.52, 0.0, er));
+    vec3 e = mix(pupil, iris, smoothstep(0.5, 0.56, er));
+    e = mix(e, vec3(0.06, 0.06, 0.05), smoothstep(0.86, 0.97, er));
+    float dome = sqrt(max(0.0, 1.0 - min(er, 1.0) * min(er, 1.0)));
+    e *= 0.72 + 0.32 * dome;
+    // the bright surface mirrored in the cornea: a crisp catchlight and a soft lower glow
+    float cl = smoothstep(0.2, 0.1, length((ed - vec2(-0.3, 0.33)) * vec2(1.0, 1.25)));
+    float cl2 = smoothstep(0.07, 0.03, length(ed - vec2(0.2, 0.42)));
+    float glow = smoothstep(0.5, 0.15, length((ed - vec2(0.12, -0.42)) * vec2(1.0, 1.9))) * 0.16;
+    e += vec3(1.0, 0.99, 0.95) * (cl * 0.95 + cl2 * 0.5) + glow * vec3(0.7, 0.85, 0.8);
+    col *= 1.0 - 0.3 * smoothstep(1.3, 1.02, er) * smoothstep(0.9, 1.02, er);   // socket shadow
+    col = mix(col, e, smoothstep(1.0, 0.94, er));
   }
   o = vec4(fog(col, vPos), 1.0);
 }`;
@@ -322,21 +400,45 @@ export const FIN_FS = /* glsl */`#version 300 es
 precision highp float;
 in vec3 vPos; in vec3 vN; in vec2 vUV; out vec4 o;
 uniform vec3 uColA, uColB, uPatDark, uPatLight; uniform float uAlpha, uSpeckle, uBorder, uIri, uMelanin, uSeed, uChroma;
-uniform int uKind, uTailPat, uSword; uniform float uBrush;
+uniform int uKind, uTailPat, uSword; uniform float uBrush, uLb;
 ${COMMON}
 ${LIGHT}
 void main(){
   float q = vUV.x, r = vUV.y;
   vec3 N = normalize(vN);
   vec3 V = normalize(uCam - vPos);
+  if (dot(N, V) < 0.0) N = -N;
   float ndv = abs(dot(N, V));
+  // 'along' runs from the fin base to its free edge, 'across' counts fin rays
+  // (kinds: 0 caudal, 1 dorsal, 2 anal/gonopodium, 3 pectoral, 4 pelvic)
+  float along, across;
+  if (uKind == 0){ along = q; across = r * 9.5; }
+  else if (uKind == 3){ along = q; across = r * 3.0; }
+  else { along = r; across = q * (uKind == 4 ? 3.0 : 7.0); }
+  // fin rays: slightly wandering, thinner toward the edge, forking in two (guppy rays branch)
+  float wob = (vnoise(vec2(along * 3.0, across * 0.6) + uSeed) - 0.5) * 0.3;
+  float cx = across + wob;
+  float f = fract(cx) - 0.5;
+  float fork = 0.2 * smoothstep(0.38, 0.85, along);
+  float dRay = min(abs(f - fork), abs(f + fork));
+  float aa = fwidth(cx);
+  float detail = 1.0 - smoothstep(0.18, 0.45, aa);      // rays fade before they get smaller than a few pixels
+  float wRay = mix(0.09, 0.045, along) + aa * 0.5;
+  float ray = (1.0 - smoothstep(wRay - aa, wRay + aa, dRay)) * detail;
+  // jointed rays: faint segments along each ray
+  float joint = smoothstep(0.82, 1.0, sin(along * 70.0 + floor(cx) * 1.7)) * ray * detail;
+  // relief: raised rays, and on the caudal the membrane falls in soft pleats toward the edge
+  float pleat = sin(r * 13.0 + (vnoise(vec2(r * 3.0, along * 2.0) + uSeed) - 0.5) * 2.5 + along * 1.5);
+  float h = ray * 0.0016 + (uKind == 0 ? pleat * 0.014 * smoothstep(0.08, 0.9, along) : 0.0);
+  N = bumpNormal(N, vPos, h * uLb);
+
   vec3 col = mix(uColA, uColB, pow(q, 1.3));
-  // fin rays: radial for the tail (constant r), along the reach for the median fins
-  float rayCoord = uKind == 0 ? r * 11.0 : q * 9.0;
-  float ray = smoothstep(0.8, 1.0, abs(sin(rayCoord * 3.14159)));
+  // pigment is densest at the base of the fin; the outer membrane is thinner; colour runs in streaks along the rays
+  col *= mix(0.86, 1.0, smoothstep(0.0, 0.3, along));
+  col *= 1.0 + (vnoise(vec2(across * 1.3, along * 0.9) + uSeed * 0.7) - 0.5) * 0.22;
   // dark fins show light rays over a dark membrane; light fins show darker rays
-  float darkFin = 1.0 - smoothstep(0.25, 0.45, luma(uColA));
-  col = mix(col * (1.0 - 0.18 * ray), col + vec3(0.22, 0.30, 0.40) * ray * smoothstep(0.15, 0.6, q), darkFin);
+  float darkFin = 1.0 - smoothstep(0.3, 0.5, max(uColA.r, max(uColA.g, uColA.b)));
+  col = mix(col * (1.0 - 0.16 * ray - 0.12 * joint), col + vec3(0.18, 0.24, 0.32) * ray * smoothstep(0.1, 0.6, along), darkFin);
   // generic melanophore speckle
   vec2 sp = vec2(q * 7.0, r * 6.0) + uSeed;
   float n = fbm(sp) + 0.35 * fbm(sp * 3.1);
@@ -355,21 +457,21 @@ void main(){
       float base = smoothstep(0.5, 0.1, q) * smoothstep(0.35, 0.7, fbm(p * 0.8));
       col = mix(col, uPatDark, clamp(lines * 0.85 + base * 0.8, 0.0, 0.95));
     } else if (uTailPat == 3){     // grass: fine, dense seed-like dots
-      vec2 g = p * 3.2; vec2 c = floor(g), f = fract(g) - 0.5;
+      vec2 g = p * 3.2; vec2 c = floor(g), fc = fract(g) - 0.5;
       vec2 off = (hash22(c) - 0.5) * 0.5;
       float on = step(0.35, hash12(c + 3.7));
-      col = mix(col, uPatDark, smoothstep(0.2, 0.1, length(f - off)) * on * 0.85);
+      col = mix(col, uPatDark, smoothstep(0.2, 0.1, length(fc - off)) * on * 0.85);
     } else if (uTailPat == 5){     // multicolour: broad bands of three colours
       float band = r * 2.2 + q * 1.4 + (fbm(p * 0.6) - 0.5) * 1.6;
       float k = fract(band * 0.5);
       vec3 third = vec3(0.98, 0.82, 0.2);
       col = k < 0.33 ? col : (k < 0.66 ? mix(col, uColB, 0.85) : mix(col, third, 0.85));
     } else if (uTailPat == 4){     // leopard: bold, spaced spots
-      vec2 g = p * 1.25; vec2 c = floor(g), f = fract(g) - 0.5;
+      vec2 g = p * 1.25; vec2 c = floor(g), fc = fract(g) - 0.5;
       vec2 off = (hash22(c) - 0.5) * 0.4;
       float on = step(0.25, hash12(c + 1.3));
       float rr = 0.18 + 0.12 * hash12(c + 9.1);
-      float d = length((f - off) * vec2(1.0, 1.15)) + (vnoise(g * 4.0) - 0.5) * 0.08;
+      float d = length((fc - off) * vec2(1.0, 1.15)) + (vnoise(g * 4.0) - 0.5) * 0.08;
       col = mix(col, uPatDark, smoothstep(rr, rr - 0.05, d) * on * 0.9);
     }
   }
@@ -381,22 +483,29 @@ void main(){
     col = mix(col, clamp(uColB * 1.2, 0.0, 1.0), swd * 0.6);
     col = mix(col, vec3(0.05), swd * smoothstep(0.92, 0.99, abs(r)) * uMelanin * 0.8);
   }
-  // brush strokes along the fin rays
+  // brush strokes along the fin rays (oil mode)
   vec2 bq = uKind == 0 ? vec2(q * 26.0, r * 60.0) : vec2(q * 40.0, r * 14.0);
   col *= 1.0 + ((vnoise(bq + uSeed) - 0.5) * 0.22 + (vnoise(bq * 0.2 + uSeed * 2.1) - 0.5) * 0.14) * uBrush;
   // iridescent tint
   vec3 irid = hsv2rgb(vec3(fract(0.5 + 0.4 * (1.0 - ndv) + 0.2 * q), 0.5 * uChroma, 1.0));
   col = mix(col, irid, uIri * 0.35 * smoothstep(0.2, 0.9, q));
+
+  // membrane thins toward the edge and recedes between the ray tips: a soft, slightly scalloped edge
+  float dn = clamp(dRay / 0.5, 0.0, 1.0);
+  float edgeAt = 1.0 - 0.05 * dn * detail - 0.03 * vnoise(vec2(across * 2.3, 0.0) + uSeed * 3.1);
+  float edge = 1.0 - smoothstep(edgeAt - 0.07, edgeAt, along);
   // dark border on the trailing edge of the tail
-  float border = uKind == 0 ? smoothstep(0.84, 0.95, q) * uBorder : 0.0;
+  float border = uKind == 0 ? smoothstep(edgeAt - 0.15, edgeAt - 0.06, along) * uBorder : 0.0;
   col = mix(col, vec3(0.05, 0.04, 0.05), border * 0.9);
-  float alpha = uAlpha * (0.78 + 0.22 * ray);
-  alpha *= smoothstep(1.0, 0.93, q) * (uKind == 0 ? smoothstep(1.0, 0.94, abs(r)) : 1.0);
-  alpha = max(alpha, border * 0.95 * smoothstep(1.0, 0.95, q));
-  if (uKind == 3){ alpha = uAlpha * smoothstep(1.0, 0.85, q) * smoothstep(1.0, 0.8, abs(r)); col = mix(uColA, col, 0.25); }
-  vec3 shaded = shade(col, N, vPos, 0.25, uIri);
-  // light passing through the membrane
-  shaded += col * 0.22 * max(0.0, dot(-N, normalize(LIGHT_DIR)));
+  float alpha = uAlpha * (0.88 + 0.12 * ray) * (1.0 - 0.15 * smoothstep(0.5, 1.0, along)) * edge;
+  if (uKind == 0) alpha *= smoothstep(1.0, 0.94, abs(r));
+  else if (uKind != 3) alpha *= smoothstep(1.0, 0.9, q);
+  alpha = max(alpha, border * 0.95 * edge);
+  if (uKind == 3){ alpha = uAlpha * (0.85 + 0.3 * ray) * smoothstep(1.0, 0.85, q) * smoothstep(1.0, 0.8, abs(r)); col = mix(uColA, col, 0.3); }
+  vec3 shaded = shade(col, N, vPos, 0.35, uIri);
+  // light through the thin membrane: a fin glows in its own colour, most when lit from behind
+  float back = max(0.0, dot(-N, normalize(LIGHT_DIR)));
+  shaded += col * col * (0.5 * back + 0.14);
   o = vec4(fog(shaded, vPos), alpha);
 }`;
 
@@ -530,7 +639,7 @@ void main(){
 export const PAINT_FS = /* glsl */`#version 300 es
 precision highp float;
 in vec2 vUv; out vec4 o;
-uniform sampler2D uSrc, uStrokes; uniform vec2 uTexel, uSmallTexel, uRes; uniform float uStroke, uImpasto, uCanvas;
+uniform sampler2D uSrc, uStrokes, uScene; uniform vec2 uTexel, uSmallTexel, uRes; uniform float uStroke, uImpasto, uCanvas, uDetail;
 ${COMMON}
 float height(vec2 uv){
   vec2 st = texture(uStrokes, uv).xy;
@@ -538,7 +647,9 @@ float height(vec2 uv){
 }
 void main(){
   vec4 src = texture(uSrc, vUv);
-  vec3 col = src.rgb;
+  // fish keep most of their own detail (rays, scales, eyes): the abstraction is for the water and plants
+  vec4 sharp = texture(uScene, vUv);
+  vec3 col = mix(src.rgb, sharp.rgb, clamp(sharp.a, 0.0, 1.0) * uDetail);
   float onScene = 1.0 - 0.75 * src.a;   // fish carry their own strokes, in body coordinates
   vec2 st = texture(uStrokes, vUv).xy;
   col *= 1.0 + (st.x - 0.5) * 0.3 * uStroke * onScene;

@@ -4,7 +4,7 @@
 // alters existing fish.
 import { rngFromSeed } from '../../core/rng.mjs';
 
-export const ART_STYLE_VERSION = 'oil-spike-0.8.0';
+export const ART_STYLE_VERSION = 'oil-spike-0.9.0';
 
 const mix = (a, b, t) => a.map((v, i) => v + (b[i] - v) * t);
 const scale = (c, k) => c.map(v => v * k);
@@ -217,6 +217,11 @@ export function guppyLook(p) {
     ? { u0: 0.5, u1: 0.56, height: 0.05, sweep: 0.2, colorA: scale(flank, 0.7), alpha: 0.85, gonopodium: true }
     : { u0: 0.6, u1: 0.68, height: 0.07, sweep: 0.08, colorA: mix(flank, [0.8, 0.8, 0.75], 0.3), alpha: 0.5, gonopodium: false };
 
+  // pelvic fins: a small pair just ahead of the anal fin (the gonopodium in males), clear with a pale edge
+  const pelvic = male
+    ? { u0: 0.4, u1: 0.43, height: 0.055, sweep: 0.11, colorA: mix(flank, [0.92, 0.92, 0.88], 0.45), alpha: 0.5 }
+    : { u0: 0.44, u1: 0.47, height: 0.06, sweep: 0.1, colorA: mix(flank, [0.88, 0.88, 0.84], 0.35), alpha: 0.42 };
+
   const pectoral = p.bigEar
     ? { length: 0.34, width: 0.11, colorA: mix([0.96, 0.92, 0.90], tail.colorA, 0.2), alpha: 0.78 }
     : { length: 0.17, width: 0.045, colorA: [0.9, 0.9, 0.86], alpha: 0.22 };
@@ -233,8 +238,11 @@ export function guppyLook(p) {
     spots, gravid: !male ? 0.8 * mel * smooth(0.85, 1, grown) : 0,
     bodyPattern, snake, fullRed, koi, zebra, gold, glass, pink, tuxedo,
     eye: { u: male ? 0.085 : 0.08, y: 0.022, radius: 0.04,
-      pupil: p.albino ? [0.75, 0.16, 0.2] : p.redEye ? [0.62, 0.06, 0.08] : p.lutino ? [0.36, 0.06, 0.10] : [0.03, 0.03, 0.04] },
-    tail, dorsalFin, anal, pectoral,
+      pupil: p.albino ? [0.75, 0.16, 0.2] : p.redEye ? [0.62, 0.06, 0.08] : p.lutino ? [0.36, 0.06, 0.10] : [0.03, 0.03, 0.04],
+      // iris: silvery gold with a melanin-dark upper rim; without melanin it is pale pink
+      iris: p.albino ? [0.96, 0.72, 0.70] : p.redEye || p.lutino ? [0.88, 0.80, 0.68] : p.bodyBase === 'golden' ? [0.86, 0.76, 0.50] : [0.80, 0.76, 0.58],
+      irisDark: p.albino ? 0 : (p.redEye || p.lutino ? 0.25 : 0.8) * mel },
+    tail, dorsalFin, anal, pelvic, pectoral,
     defect: p.spinalDefect ? 1 : 0,
     swim: { freq: male ? r(1.6, 2.1) : r(1.2, 1.5), amp: male ? r(0.05, 0.065) : r(0.04, 0.05), phase: r(0, Math.PI * 2) },
     seed: p.spotsSeed % 997,

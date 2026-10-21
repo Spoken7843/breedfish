@@ -107,6 +107,7 @@ export function buildFish(gl, look) {
   });
   const dorsal = median(look.dorsalFin, true);
   const anal = median(look.anal, false);
+  const pelvic = look.pelvic ? median(look.pelvic, false) : null;
 
   const P = look.pectoral;
   const uP = 0.21, sP = uP * Lb, yP = bend(look, uP) - 0.25 * hv(uP), tP = 0.5 * (hd(uP) + hv(uP)) * 0.5;
@@ -117,7 +118,7 @@ export function buildFish(gl, look) {
     return [station(sP), yP + r * width - 0.02 * Lb * a, 0.004 * Lb * a, a, r, tP + 0.004 * Lb, pecLen, 1];
   });
 
-  return { body, caudal, dorsal, anal, pectoral, S, Lb, dispose() { [body, caudal, dorsal, anal, pectoral].forEach(m => m.dispose()); } };
+  return { body, caudal, dorsal, anal, pelvic, pectoral, S, Lb, dispose() { [body, caudal, dorsal, anal, pelvic, pectoral].forEach(m => m?.dispose()); } };
 }
 
 /**
