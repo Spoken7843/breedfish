@@ -196,9 +196,53 @@ function needs(species, found, sex, want) {
 }
 
 /**
+ * A good-looking example of the found genotype for previews: a show-line background (no wild spots,
+ * ornaments selected up) wherever that does not change an asked value. Only for pictures; `needs` keeps
+ * the minimal genotype.
+ */
+function showExample(species, found, sex, want) {
+  const fancy = {}, spread = {};
+  for (const { locus } of lociOf(species)) {
+    if (locus.polygenic) {
+      const [a, b] = locus.alleles;
+      const plus = locus.effect.perAllele[a] >= locus.effect.perAllele[b] ? a : b;
+      (thresholdTraits(species).has(locus.effect.trait) ? spread : fancy)[locus.id] = [plus, plus];
+    }
+  }
+  // wild-type spots and tail border off (the hobby background); only loci that are not asked about
+  const asked = new Set(Object.keys(want));
+  for (const { locus } of lociOf(species)) {
+    if (locus.polygenic || found.alleles[locus.id]) continue;
+    const effects = locusEffects(locus);
+    if (effects.some(e => asked.has(e.trait))) continue;
+    if (effects.some(e => e.trait === 'pattern' || e.trait === 'tailBorder')) {
+      const quiet = locus.alleles.find(al => effects.every(e => !e.values?.[al]));
+      if (quiet) fancy[locus.id] = [quiet, quiet];
+    }
+  }
+  const candidates = [{ ...fancy, ...spread, ...found.alleles }, { ...spread, ...fancy, ...found.alleles }, { ...fancy, ...found.alleles }, found.alleles];
+  // keep the found genotype's own choices for loci it set; let the background add the rest
+  for (const alleles of [{ ...fancy, ...spread, ...pickChanged(found.alleles) }, { ...fancy, ...pickChanged(found.alleles) }, ...candidates]) {
+    const p = phenotype(species, makeFish(species, sex, alleles, found.y ?? yLocus(species)?.default), { ageDays: 365 });
+    if (shows(p, want)) return { alleles, y: found.y ?? yLocus(species)?.default ?? null };
+  }
+  return { alleles: found.alleles, y: found.y ?? yLocus(species)?.default ?? null };
+}
+/** The loci a search result really changed (not the polygene base it was searched on). */
+function pickChanged(alleles) {
+  return Object.fromEntries(Object.entries(alleles).filter(([, pair]) => !pair.every(a => a === '-' || a === '+')));
+}
+
+/** A founder-like fish of an example genotype (for previews); deterministic by `seed`. */
+export function exampleFish(species, example, sex, { id = 'preview', seed = 1 } = {}) {
+  return founder(species, { id, sex: sex === 'male' ? 'XY' : 'XX', yPattern: sex === 'male' ? example.y ?? undefined : undefined, alleles: example.alleles, devSeed: seed });
+}
+
+/**
  * want: {trait: value, ...} (one value per trait; a UI that lets the breeder pick two values of one trait
  * must say "one fish has one" itself). sex: 'male' | 'female' | 'any'.
- * Returns {possible, bySex: {male, female}} where each sex has {ok, needs, missing, masks}.
+ * Returns {possible, bySex: {male, female}} where each sex has {ok, needs, missing, masks, example}; example
+ * is a genotype ({alleles, y}) that shows it all, dressed as a show line, for exampleFish().
  */
 export function canExist(species, want, { sex = 'any' } = {}) {
   validateSpecies(species);
@@ -207,7 +251,8 @@ export function canExist(species, want, { sex = 'any' } = {}) {
   const bySex = {};
   for (const s of sexes) {
     const r = searchSex(species, want, s);
-    bySex[s] = r.ok ? { ok: true, needs: needs(species, r, s, want), missing: [], masks: [] } : { ok: false, needs: [], missing: r.missing, masks: r.masks };
+    bySex[s] = r.ok ? { ok: true, needs: needs(species, r, s, want), missing: [], masks: [], example: showExample(species, r, s, want) }
+      : { ok: false, needs: [], missing: r.missing, masks: r.masks, example: null };
   }
   return { possible: sexes.some(s => bySex[s].ok), bySex };
 }

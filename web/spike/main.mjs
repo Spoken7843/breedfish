@@ -11,7 +11,7 @@ import { femaleExpression, SPECIES } from '../../core/species.mjs';
 import { phenotype } from '../../core/engine.mjs';
 import { hashString } from '../../core/rng.mjs';
 import { GUPPY_STRAINS, strainFounder, strainX, Y_ONLY_PATTERNS } from '../../core/strains.mjs';
-import { canExist } from '../../core/possible.mjs';
+import { canExist, exampleFish } from '../../core/possible.mjs';
 import { fertility, lifeStage, sexOf } from '../../core/lifehistory.mjs';
 import { addFish, advance as advanceWeeks, ageOf, breedAndWait, canMate, coi, createTank, cull, findAlive, gestationDays, knownParents, lengthMm,
   loadTank as loadTankSave, moveFish, nurseryOf, paternityTest, prune, QUICK_TANKS, quickCross, saveTank, setTank, tankById, tankLoad, WEEK } from '../../core/tank.mjs';
@@ -336,6 +336,7 @@ function visibleEntries(entries) {
 let entriesCache = [], listCache = [];
 
 function tankMembers() {
+  if (state.preview) return state.preview.members;
   if (state.mode === 'catalog') {
     const strains = GUPPY_STRAINS.slice(state.page * PAGE_SIZE, state.page * PAGE_SIZE + PAGE_SIZE);
     const males = strains.map(s => ({ fish: strainFounder(s, 'male', `${s.id}-M`, hashString(`${s.id}:M:${state.seed}`)), name: s.name, note: s.note, strain: s }));
@@ -1119,7 +1120,12 @@ function renderPick() {
     $('pick-actions').replaceChildren();
     return;
   }
-  if (state.mode === 'catalog') {
+  if (state.preview && f) {
+    applyThumb($('pick-thumb'), f.p, f.look);
+    $('pick-name').textContent = `${f.p.observedSex === 'male' ? '♂' : '♀'} ${f.name}`;
+    $('pick-meta').textContent = `Prévia do "Isso existe?" — ${varietySummary(f.p)}`;
+    btn('Fechar prévia', closePreview, 'ghost');
+  } else if (state.mode === 'catalog') {
     const i = f.index, isMale = f.p.observedSex === 'male';
     applyThumb($('pick-thumb'), f.p, f.look);
     $('pick-name').textContent = `${isMale ? '♂' : '♀'} ${f.name}`;
@@ -1463,8 +1469,45 @@ function renderExistPicker() {
 let existTimer = null;
 function scheduleExist() {
   clearTimeout(existTimer);
+  if (!Object.keys(exist.picks).length) { lastExist = null; if (state.preview) closePreview(); }
   $('exist-result').replaceChildren(el('p', { className: 'hint', textContent: Object.keys(exist.picks).length ? 'Calculando…' : 'Marque características acima.' }));
   if (Object.keys(exist.picks).length) existTimer = setTimeout(renderExistResult, 120);
+}
+
+// Preview: the fish being built swim in the aquarium (two of each possible sex, different developmental
+// noise), until the breeder closes it or does something else.
+let lastExist = null;
+function openPreview(refreshOnly = false) {
+  if (!lastExist) { if (state.preview) closePreview(); return; }
+  const members = [];
+  for (const sx of ['male', 'female']) {
+    const res = lastExist.r.bySex[sx];
+    if (!res?.ok) continue;
+    for (const seed of [11, 23]) {
+      const fish = exampleFish(species, res.example, sx, { id: `preview-${sx}-${seed}`, seed });
+      const p = phenotype(species, fish, { ageDays: 365 });
+      members.push({ fish, p, name: hobbyName(p) });
+    }
+  }
+  const key = JSON.stringify(members.map(m => m.fish.genome));
+  if (refreshOnly && state.preview?.key === key) return;
+  state.preview = { members, key };
+  state.focus = -1;
+  const names = ['male', 'female'].map(sx => members.find(m => m.p.observedSex === sx)).filter(Boolean).map(m => `${m.p.observedSex === 'male' ? '♂' : '♀'} ${m.name}`);
+  const same = names.length === 2 && names[0].slice(2) === names[1].slice(2);
+  $('preview-tag').firstChild.textContent = `Prévia: ${same ? `${names[0].slice(2)} (♂ e ♀)` : names.join(' · ')}`;
+  if (!refreshOnly) setPick(null);
+  loadTank();
+  $('preview-tag').hidden = false;
+  if (!refreshOnly) stageBox.parentElement.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' });
+}
+function closePreview() {
+  if (!state.preview) return;
+  state.preview = null;
+  $('preview-tag').hidden = true;
+  setPick(null);
+  loadTank();
+  scheduleExist();
 }
 
 /** Strains of the catalog that already carry an allele the fish needs. */
@@ -1525,6 +1568,13 @@ function renderExistResult() {
       for (const m of b.masks) why.add(`${traitText(m.hider, m.hiderValue)} esconde ${traitText(m.hidden, m.hiddenValue).toLowerCase()}: o gene pode estar lá, mas não aparece.`);
     }
     for (const text of why) out.push(el('p', { className: 'hint', textContent: text }));
+    lastExist = ok.length ? { r, want } : null;
+    if (ok.length) {
+      const view = el('button', { type: 'button', className: state.preview ? 'ghost small' : 'primary small', textContent: state.preview ? 'Fechar prévia' : `Ver ${ok.length === 2 ? 'macho e fêmea' : SEXNAME[ok[0]]} nadando` });
+      view.addEventListener('click', () => (state.preview ? closePreview() : openPreview()));
+      out.push(view);
+      if (state.preview) openPreview(true);
+    }
     const how = ok.length ? r.bySex[ok[0]] : null;
     if (how) {
       const poly = how.needs.filter(n => n.polygenic), single = how.needs.filter(n => !n.polygenic);
@@ -1540,6 +1590,7 @@ function renderExistResult() {
 /** Recompute the list and the fish in the aquarium after any change to the tank or the filters. */
 function refresh() {
   view.cullArmed = false; view.resetArmed = false; view.cullBrood = null;
+  if (state.preview) { state.preview = null; $('preview-tag').hidden = true; }
   if (state.mode === 'plantel') loadTank(); else { renderList(); syncControls(); }
 }
 
@@ -1751,15 +1802,20 @@ if (SOFTWARE_GL) {
   $('gpu-note').hidden = false;
   $('gpu-note').textContent = 'O navegador está desenhando sem placa de vídeo (' + RENDERER.slice(0, 60) + '). Comecei sem o filtro e em resolução baixa. Ative "Usar aceleração de hardware" nas configurações do navegador e recarregue para ver a pintura.';
 }
+// banner on the aquarium while the "Isso existe?" preview swims
+const previewTag = el('div', { id: 'preview-tag', className: 'preview-tag', hidden: true },
+  el('span', { textContent: 'Prévia: o peixe que você montou' }));
+{ const close = el('button', { type: 'button', className: 'ghost small', textContent: 'Fechar' }); close.addEventListener('click', () => closePreview()); previewTag.append(close); }
+stageBox.append(previewTag);
 $('exist-sex').addEventListener('change', e => { exist.sex = e.target.value; scheduleExist(); });
 $('exist-clear').addEventListener('click', () => { exist.picks = {}; renderExistPicker(); scheduleExist(); });
 renderExistPicker(); scheduleExist();
 $('mom-thumb').addEventListener('click', () => setPick(breeding.motherId));
 $('dad-thumb').addEventListener('click', () => setPick(breeding.fatherId));
-$('mode-catalog').addEventListener('click', () => { state.mode = 'catalog'; state.focus = -1; loadTank(); });
-$('mode-cross').addEventListener('click', () => { state.mode = 'plantel'; state.focus = -1; loadTank(); });
-$('prev').addEventListener('click', () => { state.page = Math.max(0, state.page - 1); state.focus = -1; loadTank(); });
-$('next').addEventListener('click', () => { state.page = Math.min(PAGES - 1, state.page + 1); state.focus = -1; loadTank(); });
+$('mode-catalog').addEventListener('click', () => { state.mode = 'catalog'; state.focus = -1; state.preview = null; $('preview-tag').hidden = true; loadTank(); });
+$('mode-cross').addEventListener('click', () => { state.mode = 'plantel'; state.focus = -1; state.preview = null; $('preview-tag').hidden = true; loadTank(); });
+$('prev').addEventListener('click', () => { state.page = Math.max(0, state.page - 1); state.focus = -1; state.preview = null; $('preview-tag').hidden = true; loadTank(); });
+$('next').addEventListener('click', () => { state.page = Math.min(PAGES - 1, state.page + 1); state.focus = -1; state.preview = null; $('preview-tag').hidden = true; loadTank(); });
 $('res').addEventListener('change', e => { state.scale = Number(e.target.value); state.auto = false; });
 $('oil').addEventListener('change', e => { state.oil = e.target.checked; state.auto = false; });
 $('radius').addEventListener('input', e => { state.radius = Number(e.target.value); });
