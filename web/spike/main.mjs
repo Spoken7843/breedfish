@@ -7,7 +7,7 @@
 // age, mate, store sperm and die; ornaments are quantitative and respond to selection rounds
 // (core/selection.mjs). The fish room is saved in this browser.
 // Reproducible scene: ?mode=cross&mom=koi&dad=snakeskin&seed=2026&broods=2&t=12&focus=-1&oil=1&r=6&res=0.5&rs=1
-import { SPECIES } from '../../core/species.mjs';
+import { femaleExpression, SPECIES } from '../../core/species.mjs';
 import { phenotype } from '../../core/engine.mjs';
 import { hashString } from '../../core/rng.mjs';
 import { GUPPY_STRAINS, strainFounder, Y_ONLY_PATTERNS } from '../../core/strains.mjs';
@@ -159,11 +159,26 @@ const pct = x => `${Math.round(x * 100)}%`;
 const genLabel = g => (g === 0 ? 'fundador' : `F${g}`);
 const STAGE = { alevino: 'alevino', jovem: 'jovem', adulto: 'adulto', idoso: 'idoso' };
 
+/** Body colour layers a fish shows, in words; a faint one (a female's) says so. */
+function bodyLayers(p) {
+  const faint = k => (p.strength?.[k] !== undefined ? ' (fraco)' : '');
+  const out = [];
+  if (p.kohaku) out.push(`cabeça vermelha${p.headRed < 0.35 ? ' pequena' : p.headRed > 0.7 ? ' grande' : ''}`);
+  if (p.fullRed) out.push('Full red' + faint('fullRed'));
+  if (p.snakeskin !== 'none') out.push(T.snakeskin.labels[p.snakeskin] + faint('snakeskin'));
+  if (p.bodyPattern !== 'none') out.push(T.bodyPattern.labels[p.bodyPattern] + faint('bodyPattern'));
+  return out;
+}
+/** One label for the whole body, for counts and groups: "Koi + Snakeskin", "Nenhum". */
+const bodyLabel = p => {
+  const parts = [p.kohaku && 'Koi', p.fullRed && 'Full red', p.snakeskin !== 'none' && T.snakeskin.labels[p.snakeskin], p.bodyPattern !== 'none' && T.bodyPattern.labels[p.bodyPattern]].filter(Boolean);
+  return parts.length ? parts.join(' + ') : 'Nenhum';
+};
+
 function varietySummary(p) {
-  const parts = [];
-  if (p.bodyPattern !== 'none') parts.push(T.bodyPattern.labels[p.bodyPattern]);
+  const parts = [...bodyLayers(p)];
   if (p.tuxedo) parts.push('Tuxedo');
-  if (p.tailPattern !== 'none') parts.push('cauda ' + T.tailPattern.labels[p.tailPattern].toLowerCase());
+  if (p.tailPattern !== 'none') parts.push('cauda ' + T.tailPattern.labels[p.tailPattern].toLowerCase() + (p.strength?.tailPattern !== undefined ? ' (fraco)' : ''));
   if (p.tailColor !== 'natural') parts.push('cauda ' + T.tailColor.labels[p.tailColor].toLowerCase());
   parts.push(T.tailShape.labels[p.tailShape]);
   if (p.albino) parts.push('Albino');
@@ -172,7 +187,7 @@ function varietySummary(p) {
   else if (p.bodyBase !== 'grey') parts.push(T.bodyBase.labels[p.bodyBase]);
   if (p.blau !== 'none') parts.push(T.blau.labels[p.blau]);
   if (p.noOrange) parts.push('Blue');
-  if (p.pattern && p.bodyPattern === 'none') parts.push('manchas selvagens');
+  if (p.pattern && !bodyLayers(p).length) parts.push('manchas selvagens');
   if (p.bigEar) parts.push('Dumbo ear');
   if (p.spinalDefect) parts.push('coluna torta');
   return parts.join(' · ');
@@ -192,7 +207,9 @@ const RANKED = Object.entries(T).filter(([k, t]) => t.type !== 'number' && t.lab
 const characteristics = p => RANKED.filter(([k, t]) => p[k] !== t.default).length - (p.spinalDefect ? 1 : 0);
 
 // Filters: one "show only" choice per visible trait (key `trait=value`), colours and patterns first.
-const FILTER_ORDER = ['tailColor', 'bodyPattern', 'tailPattern', 'tailShape', 'bodyBase', 'blau'];
+const FILTER_ORDER = ['tailColor', 'kohaku', 'snakeskin', 'bodyPattern', 'fullRed', 'tailPattern', 'tailShape', 'bodyBase', 'blau'];
+/** Can females show this trait value at all? (Male-only colours: a female passes such filters.) */
+const femaleShows = (k, v) => femaleExpression(species, k, v) > 0;
 const FILTER_TRAITS = RANKED.map(([k]) => k).sort((a, b) => (FILTER_ORDER.indexOf(a) + 1 || 99) - (FILTER_ORDER.indexOf(b) + 1 || 99));
 const goalOf = key => {
   const [trait, raw] = key.split('=');
@@ -200,7 +217,8 @@ const goalOf = key => {
 };
 const valueLabel = (k, v) => (T[k].type === 'bool' ? (v ? 'sim' : 'não') : T[k].labels?.[v] ?? String(v));
 // Quantitative ornaments a breeder measures (0-100 in the UI) and their short names.
-const QUANT = quantitativeTraits(species).filter(k => !['saturation', 'luminance'].includes(k));
+// headRed only means something in a koi; it is measured apart from the ornaments' grade
+const QUANT = quantitativeTraits(species).filter(k => !['saturation', 'luminance', 'headRed'].includes(k));
 const SHORT = { tailSize: 'cauda', tailSpread: 'abertura', dorsalSize: 'dorsal', colorCoverage: 'cor', bodySize: 'porte' };
 const n100 = x => Math.round(x * 100);
 /** Overall grade a judge would give the ornaments: mean of the measures, 0-1. */
@@ -209,7 +227,8 @@ const showScore = p => QUANT.reduce((a, k) => a + p[k], 0) / QUANT.length;
 const SORTS = [
   ['new', 'Mais novos'], ['old', 'Mais velhos', 'room'], ['score', 'Melhor nota (média das medidas)'],
   ...QUANT.map(k => [`q:${k}`, { tailSize: 'Maior cauda', tailSpread: 'Cauda mais aberta', dorsalSize: 'Maior dorsal', colorCoverage: 'Mais cor', bodySize: 'Maior porte' }[k]]),
-  ['g:tailColor', 'Agrupar por cor da cauda'], ['g:bodyBase', 'Agrupar por cor do corpo'], ['g:bodyPattern', 'Agrupar por padrão do corpo'],
+  ['q:headRed', 'Mais vermelho na cabeça (koi)'],
+  ['g:tailColor', 'Agrupar por cor da cauda'], ['g:body', 'Agrupar por padrão do corpo (koi, snakeskin…)'], ['g:bodyBase', 'Agrupar por cor do corpo'],
   ['g:tailShape', 'Agrupar por formato da cauda'], ['chars', 'Mais características'], ['random', 'Amostra aleatória'],
 ];
 
@@ -226,7 +245,7 @@ function passesFilters(e, goals = view.goals) {
   for (const key of goals) {
     const g = goalOf(key);
     if (e.stage === 'alevino') { if (!FRY_VISIBLE.has(g.trait) || e.p[g.trait] !== g.value) return false; continue; }
-    if (T[g.trait].sexLimited && T[g.trait].sexLimited !== e.p.observedSex) continue;
+    if (e.p.observedSex === 'female' && !femaleShows(g.trait, g.value)) continue;
     if (e.p[g.trait] !== g.value) return false;
   }
   return true;
@@ -261,7 +280,7 @@ function plantelEntries() {
 }
 
 /** A measure the breeder can take: fins of fry are not readable yet. */
-const measure = (e, k) => (e.stage === 'alevino' ? -1 : e.p[k]);
+const measure = (e, k) => (e.stage === 'alevino' || (k === 'headRed' && !e.p.kohaku) ? -1 : e.p[k]);
 
 const isFounder = fish => (fish.generation ?? 0) === 0 || fish.origin === 'external';
 const broodFilterOf = fish => (isFounder(fish) ? 'F' : /^[NL]\d+-\d+$/.test(fish.id) ? broodOf(fish.id) : '');
@@ -275,7 +294,8 @@ function baseEntries(entries) {
 /** Group of a fish when the list is grouped by a trait: fry and fish that cannot show it go last. */
 function groupOf(e, k) {
   if (e.stage === 'alevino') return 'Alevinos (ainda sem cor)';
-  if (T[k].sexLimited && T[k].sexLimited !== e.p.observedSex) return 'Fêmeas (não mostram)';
+  if (k === 'body') return `Corpo: ${bodyLabel(e.p)}`;
+  if (e.p.observedSex === 'female' && femaleExpression(species, k) === 0) return 'Fêmeas (não mostram)';
   return `${T[k].label}: ${valueLabel(k, e.p[k])}`;
 }
 function visibleEntries(entries) {
@@ -400,7 +420,10 @@ function drawBody(f, fr, viewProj) {
     .f('uRetic', L.reticulation).f('uSheen', L.sheen).f('uGravid', L.gravid).f('uSex', L.sex === 'male' ? 1 : 0)
     .v4('uSpotA', spotA).v4('uSpotB', spotB).i('uSpotCount', Math.min(8, L.spots.length))
     .f('uEye', L.eye.u, L.eye.y, L.eye.radius, 0).v3('uPupil', L.eye.pupil)
-    .i('uPat', L.bodyPattern.id).v3('uPatA', L.bodyPattern.colA).v3('uPatB', L.bodyPattern.colB).f('uMetal', L.bodyPattern.metal)
+    .i('uPat', L.bodyPattern.id).v3('uPatA', L.bodyPattern.colA).v3('uPatB', L.bodyPattern.colB).f('uMetal', L.bodyPattern.metal).f('uPatK', L.bodyPattern.k)
+    .i('uSnake', L.snake.id).v3('uSnakeA', L.snake.colA).v3('uSnakeB', L.snake.colB).f('uSnakeK', L.snake.k)
+    .v3('uRedA', L.fullRed.colA).v3('uRedB', L.fullRed.colB).f('uRedK', L.fullRed.id ? L.fullRed.k : 0)
+    .v3('uKoiA', L.koi.colA).v3('uKoiB', L.koi.colB).f('uKoiK', L.koi.id ? L.koi.k : 0).f('uKoiExt', L.koi.extent).f('uKoiBody', L.koi.body)
     .f('uTux', L.tuxedo.amount).v3('uTuxColor', L.tuxedo.color);
   body.f('uSide', 1); f.geo.body.draw();
   body.f('uSide', -1); f.geo.body.draw();
@@ -473,7 +496,8 @@ function render(t, dt) {
 // ---------- thumbnails: each fish painted alone, side on, for the list and the pick bar ----------
 // Rendered from the same look (phenotype only) into a small offscreen target, read back once and kept as
 // an image keyed by the look, so a fish gets a new picture only when it changes (grows, colours up).
-const THUMB_W = 192, THUMB_H = 112;
+const THUMB_SCALE = Math.min(4, Math.max(1, Math.round(num('thumbScale', 1))));   // dev: bigger pictures for checks
+const THUMB_W = 192 * THUMB_SCALE, THUMB_H = 112 * THUMB_SCALE;
 const thumbCache = new Map();   // look key -> data URL
 const thumbQueue = new Map();   // look key -> { look, p }
 let thumbRT = null, thumbMsaa = null, thumbCtx = null, thumbPixels = null;
@@ -491,7 +515,7 @@ function applyThumb(img, p, look = p ? guppyLook(p) : null) {
   else { img.removeAttribute('src'); if (!thumbQueue.has(key)) thumbQueue.set(key, { look, p }); }
   return img;
 }
-const thumbImg = (p, look, cls = 'thumb') => applyThumb(el('img', { className: cls, alt: '', width: THUMB_W / 2, height: THUMB_H / 2, decoding: 'async' }), p, look);
+const thumbImg = (p, look, cls = 'thumb') => applyThumb(el('img', { className: cls, alt: '', width: 96, height: 56, decoding: 'async' }), p, look);
 
 function renderThumb({ look, p }) {
   if (!thumbRT) {
@@ -879,8 +903,8 @@ const CHALLENGES = [
     test: () => {
       const byBrood = {};
       for (const f of tank.alive) if (isAdultMale(f) && f.generation >= 3 && f.origin !== 'external') (byBrood[broodOf(f.id)] ??= []).push(phenotype(species, f));
-      return Object.values(byBrood).some(ps => ps.length >= 8 && ps[0].bodyPattern !== 'none'
-        && ps.every(p => p.bodyPattern === ps[0].bodyPattern && p.tailColor === ps[0].tailColor && p.tailShape === ps[0].tailShape));
+      return Object.values(byBrood).some(ps => ps.length >= 8 && bodyLabel(ps[0]) !== 'Nenhum'
+        && ps.every(p => bodyLabel(p) === bodyLabel(ps[0]) && p.tailColor === ps[0].tailColor && p.tailShape === ps[0].tailShape));
     } },
   { id: 'show', title: 'Cauda de exposição', text: 'Crie um macho com cauda ≥ 85 e cor ≥ 85.',
     test: () => tank.alive.some(f => isAdultMale(f) && f.generation >= 1 && f.origin !== 'external' && (p => p.tailSize >= 0.85 && p.colorCoverage >= 0.85)(phenotype(species, f))) },
@@ -910,6 +934,7 @@ function infoLine(e) {
 /** Measured ornaments and length, 0-100 like a judge's sheet, with the overall grade first. */
 function measuresText(e) {
   const parts = [`nota ${n100(e.score)}`, ...QUANT.filter(k => k !== 'bodySize').map(k => `${SHORT[k]} ${n100(e.p[k])}`)];
+  if (e.p.kohaku) parts.push(`cabeça ${n100(e.p.headRed)}`);
   if (e.len) parts.push(`${Math.round(e.len)} mm`);
   return parts.join(' · ');
 }
@@ -1158,7 +1183,7 @@ function selScore(e) {
   const by = view.sel.by;
   if (by === 'score') return e.score;
   if (by === 'chars') return e.chars;
-  return e.p[by.slice(2)] ?? 0;
+  return measure(e, by.slice(2));
 }
 /** What a selection round would do on the fish in the current list (filters and tank apply). */
 function selectionPlan() {
@@ -1207,7 +1232,7 @@ function renderStats() {
   const cats = [
     top('cauda ♂', males.map(e => T.tailColor.labels[e.p.tailColor])),
     top('formato ♂', males.map(e => T.tailShape.labels[e.p.tailShape])),
-    top('corpo ♂', males.map(e => T.bodyPattern.labels[e.p.bodyPattern])),
+    top('corpo ♂', males.map(e => bodyLabel(e.p))),
     top('albino', list.filter(e => e.p.albino).length ? list.map(e => (e.p.albino ? 'sim' : 'não')) : []),
   ].filter(Boolean);
   box.replaceChildren(
@@ -1233,7 +1258,7 @@ function plannerText() {
     const sons = kids.filter(k => k.observedSex === 'male' && !k.embryoLethal);
     const pctOf = (list, f) => Math.round((list.filter(f).length / Math.max(1, list.length)) * 100);
     const topOf = (list, k) => categoryCounts(list.map(x => T[k].labels[x[k]])).slice(0, 3).map(([v, n]) => `${v} ${Math.round((n / list.length) * 100)}%`).join(', ');
-    text += ` Lab (300 simulados): filhos com cauda ${topOf(sons, 'tailColor')}; corpo ${topOf(sons, 'bodyPattern')}; albinos ${pctOf(kids, k => k.albino)}%; embriões perdidos ${Math.round((lost / kids.length) * 100)}%.`;
+    text += ` Lab (300 simulados): filhos com cauda ${topOf(sons, 'tailColor')}; corpo ${categoryCounts(sons.map(bodyLabel)).slice(0, 3).map(([v, n]) => `${v} ${Math.round((n / sons.length) * 100)}%`).join(', ')}; filhas com cabeça vermelha ${pctOf(kids.filter(k => k.observedSex === 'female'), k => k.kohaku)}%; albinos ${pctOf(kids, k => k.albino)}%; embriões perdidos ${Math.round((lost / kids.length) * 100)}%.`;
   }
   return text;
 }
@@ -1364,7 +1389,7 @@ function renderFilters() {
   const selects = [];
   for (const k of FILTER_TRAITS) {
     const others = view.goals.filter(key => goalOf(key).trait !== k);
-    const pool = base.filter(e => (!T[k].sexLimited || e.p.observedSex === T[k].sexLimited)
+    const pool = base.filter(e => (e.p.observedSex === 'male' || femaleShows(k))
       && passesFilters(e, others));
     const counts = new Map();
     for (const e of pool) counts.set(e.p[k], (counts.get(e.p[k]) ?? 0) + 1);
@@ -1382,7 +1407,7 @@ function renderFilters() {
       view.shown = LIST_STEP;
       refresh();
     });
-    const label = `${T[k].label}${T[k].sexLimited === 'male' ? ' (só machos mostram)' : ''}`;
+    const label = `${T[k].label}${!femaleShows(k) ? ' (só machos mostram)' : ''}`;
     selects.push(el('label', { className: k in chosen ? 'on' : '' }, label, sel));
   }
   $('trait-filters').replaceChildren(...selects);
@@ -1556,7 +1581,8 @@ $('stock-strain').addEventListener('change', e => {
   persist(); refresh();
 });
 $('sel-by').replaceChildren(el('option', { value: 'score', textContent: 'Nota (média das medidas)' }),
-  ...QUANT.map(k => el('option', { value: `q:${k}`, textContent: T[k].label })), el('option', { value: 'chars', textContent: 'Mais características' }));
+  ...QUANT.map(k => el('option', { value: `q:${k}`, textContent: T[k].label })), el('option', { value: 'q:headRed', textContent: 'Vermelho da cabeça (koi)' }),
+  el('option', { value: 'chars', textContent: 'Mais características' }));
 for (const [id, key, cast] of [['sel-by', 'by', String], ['sel-scope', 'scope', String], ['sel-keep', 'keep', Number], ['sel-action', 'action', String]]) {
   $(id).addEventListener('change', e => { view.sel[key] = cast(e.target.value); view.sel.armed = false; syncControls(); });
 }

@@ -31,16 +31,33 @@ export function phenotype(species, fish, { ageDays = 100, temperatureC = 26, gro
 
   const discrete = {}; // trait -> list of values from loci
   const sums = {};     // trait -> additive total
-  const push = (trait, value) => { (discrete[trait] ??= []).push(value); };
+  const shown = {};    // trait -> value -> strength (< 1 only when every contribution is weakened in this sex)
+  const push = (trait, value, strength = 1) => {
+    (discrete[trait] ??= []).push(value);
+    const byValue = (shown[trait] ??= {});
+    byValue[value] = Math.max(byValue[value] ?? 0, strength);
+  };
+  // How strongly an effect acts in this fish: `female` (0..1) sets its strength in females; otherwise
+  // the effect's or the locus' `expressedIn` limits it to one sex.
+  const strengthOf = (locus, effect) => {
+    if (observedSex === 'female' && effect.female !== undefined) return effect.female;
+    const only = effect.expressedIn ?? locus.expressedIn;
+    return only && only !== observedSex ? 0 : 1;
+  };
 
   const express = (locus, genotype) => {
-    if (locus.kind === 'neutral' || (locus.expressedIn && locus.expressedIn !== observedSex)) return;
+    if (locus.kind === 'neutral') return;
     for (const effect of locusEffects(locus)) {
+      const k = strengthOf(locus, effect);
+      if (k <= 0) continue;
       if (locus.kind === 'additive') {
         sums[effect.trait] = (sums[effect.trait] ?? 0) + genotype.reduce((s, a) => s + effect.perAllele[a], 0);
+      } else if (locus.codominant) {
+        // each allele (a haplotype block) acts on its own: both X of a female show their genes
+        for (const a of new Set(genotype)) { const v = effect.values[a]; if (v !== null && v !== undefined) push(effect.trait, v, k); }
       } else {
         const v = effectValue(effect, locus.alleles, genotype);
-        if (v !== null && v !== undefined) push(effect.trait, v);
+        if (v !== null && v !== undefined) push(effect.trait, v, k);
       }
     }
   };
@@ -56,8 +73,9 @@ export function phenotype(species, fish, { ageDays = 100, temperatureC = 26, gro
   const y = yLocus(species);
   if (y && chromosomalSex === 'XY' && fish.genome.yPattern != null) {
     for (const effect of locusEffects(y)) {
+      const k = strengthOf(y, effect);
       const v = effect.values[fish.genome.yPattern];
-      if (v !== null && v !== undefined) push(effect.trait, v);
+      if (k > 0 && v !== null && v !== undefined) push(effect.trait, v, k);
     }
   }
 
@@ -81,7 +99,18 @@ export function phenotype(species, fish, { ageDays = 100, temperatureC = 26, gro
     traits[name] = value;
   }
   for (const rule of species.epistasis ?? []) {
-    if (traits[rule.when.trait] === rule.when.equals) Object.assign(traits, rule.set);
+    if (traits[rule.when.trait] !== rule.when.equals) continue;
+    Object.assign(traits, rule.set ?? {});
+    // map: turn some values of a trait into others (e.g. no red pigment: a red tail shows white)
+    for (const [name, table] of Object.entries(rule.map ?? {})) if (traits[name] in table) traits[name] = table[traits[name]];
+  }
+  // strength of each shown value that this sex expresses only weakly (e.g. a male pattern faint in females)
+  const strength = {};
+  for (const [name, byValue] of Object.entries(shown)) {
+    const t = species.traits[name];
+    if (t.type === 'number' || traits[name] === t.default) continue;
+    const k = t.type === 'bool' ? byValue.true : byValue[traits[name]];
+    if (k !== undefined && k < 1) strength[name] = k;
   }
   const environmental = [];
   for (const [name, value] of Object.entries(environment ?? {})) {
@@ -94,7 +123,7 @@ export function phenotype(species, fish, { ageDays = 100, temperatureC = 26, gro
   return {
     species: species.id, chromosomalSex, observedSex, sexReversed,
     ...traits,
-    maturity, sizeFactor: growth === null ? maturity : clamp(growth, 0.05, 1.2), ageDays, environmental,
+    maturity, sizeFactor: growth === null ? maturity : clamp(growth, 0.05, 1.2), ageDays, environmental, strength,
     spotsSeed: deriveSeed(fish.devSeed, 'spots'), temperatureC,
   };
 }

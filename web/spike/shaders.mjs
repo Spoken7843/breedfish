@@ -131,7 +131,10 @@ uniform vec3 uDorsal, uFlank, uBelly, uPupil;
 uniform float uMelanin, uRetic, uSheen, uGravid, uSeed, uChroma, uSex;
 uniform vec4 uSpotA[8]; uniform vec4 uSpotB[8]; uniform int uSpotCount;
 uniform vec4 uEye; // u, y, radius
-uniform int uPat; uniform vec3 uPatA, uPatB; uniform float uMetal;
+uniform int uPat; uniform vec3 uPatA, uPatB; uniform float uMetal, uPatK;
+uniform int uSnake; uniform vec3 uSnakeA, uSnakeB; uniform float uSnakeK;
+uniform vec3 uRedA, uRedB; uniform float uRedK;
+uniform vec3 uKoiA, uKoiB; uniform float uKoiK, uKoiExt, uKoiBody;
 uniform float uTux; uniform vec3 uTuxColor; uniform float uBrush;
 ${COMMON}
 ${LIGHT}
@@ -156,63 +159,63 @@ void main(){
   vec3 irid = hsv2rgb(vec3(fract(0.48 + 0.35 * (1.0 - ndv) + 0.1 * fbm(bp * 9.0)), 0.55 * uChroma, 0.95));
   albedo = mix(albedo, irid, sheenMask * uSheen * 0.55);
 
-  // ---- variety body patterns ----
+  // ---- variety body colour, in layers: full red, snakeskin chain, metallic/solid pattern, Kohaku head ----
   float headMask = smoothstep(0.16, 0.26, u);
   float metal = 0.0;
-  if (uPat == 1 || uPat == 2) {            // snakeskin / cobra: chain of dark links over a light ground
+  if (uRedK > 0.0) {                       // full red: red over the whole body (fainter in females)
+    float m = smoothstep(0.02, 0.1, u) * smoothstep(-0.95, -0.5, v);
+    albedo = mix(albedo, mix(uRedA, uRedB, 0.3 * fbm(bp * 10.0 + uSeed)), m * 0.88 * uRedK);
+    metal = max(metal, m * 0.25 * uRedK);
+  }
+  if (uSnake > 0 && uSnakeK > 0.0) {      // snakeskin / cobra: chain of dark links over a light ground
     vec2 sq = bp * 30.0;
     sq += (vec2(vnoise(sq * 0.35 + uSeed), vnoise(sq * 0.35 + uSeed + 7.0)) - 0.5) * 1.4;
     vec2 w = worley(sq);
     float chain = smoothstep(0.17, 0.05, w.y - w.x);
-    float ground = headMask * smoothstep(-0.85, -0.45, v);
-    albedo = mix(albedo, uPatA, 0.6 * ground);
-    albedo = mix(albedo, uPatB, chain * ground * 0.9);
-    if (uPat == 2){
+    float ground = headMask * smoothstep(-0.85, -0.45, v) * uSnakeK;
+    albedo = mix(albedo, uSnakeA, 0.6 * ground * (1.0 - 0.6 * uRedK));   // over full red the chain sits on red
+    albedo = mix(albedo, uSnakeB, chain * ground * 0.9);
+    if (uSnake == 2){
       float bars = smoothstep(0.3, 0.85, sin(u * 70.0 + (vnoise(vec2(u * 8.0, yN * 20.0) + uSeed) - 0.5) * 3.0)) * smoothstep(0.45, 0.62, u) * smoothstep(-0.7, -0.3, v);
-      albedo = mix(albedo, uPatB, bars * 0.75);
+      albedo = mix(albedo, uSnakeB, bars * 0.75 * uSnakeK);
     }
-    metal = uMetal * ground;
-  } else if (uPat == 3) {                 // moscow: solid metallic colour over the whole body
-    float m = smoothstep(0.06, 0.15, u) * smoothstep(-0.95, -0.55, v);
+    metal = max(metal, 0.15 * ground);
+  }
+  float pk = uPatK;
+  if (uPat == 3) {                         // moscow: solid metallic colour over the whole body
+    float m = smoothstep(0.06, 0.15, u) * smoothstep(-0.95, -0.55, v) * pk;
     vec3 c = mix(uPatA, uPatB, 0.35 * fbm(bp * 8.0 + uSeed) + 0.3 * (1.0 - ndv));
-    albedo = mix(albedo, c, m * 0.92); metal = m * uMetal;
+    albedo = mix(albedo, c, m * 0.92); metal = max(metal, m * uMetal);
   } else if (uPat == 4) {                 // japan blue: light metallic blue on the rear body
-    float m = smoothstep(0.42, 0.6, u + (vnoise(bp * 14.0 + uSeed) - 0.5) * 0.08) * smoothstep(-0.75, -0.3, v) * smoothstep(0.98, 0.6, v);
-    albedo = mix(albedo, mix(uPatA, uPatB, 0.45 * (1.0 - ndv)), m * 0.88); metal = m * uMetal;
+    float m = smoothstep(0.42, 0.6, u + (vnoise(bp * 14.0 + uSeed) - 0.5) * 0.08) * smoothstep(-0.75, -0.3, v) * smoothstep(0.98, 0.6, v) * pk;
+    albedo = mix(albedo, mix(uPatA, uPatB, 0.45 * (1.0 - ndv)), m * 0.88); metal = max(metal, m * uMetal);
   } else if (uPat == 5) {                 // coral: metallic red fore-body
-    float m = smoothstep(0.1, 0.2, u) * smoothstep(0.6, 0.42, u + (vnoise(bp * 12.0 + uSeed) - 0.5) * 0.08) * smoothstep(-0.8, -0.3, v);
-    albedo = mix(albedo, mix(uPatA, uPatB, 0.35 * (1.0 - ndv)), m * 0.9); metal = m * uMetal;
+    float m = smoothstep(0.1, 0.2, u) * smoothstep(0.6, 0.42, u + (vnoise(bp * 12.0 + uSeed) - 0.5) * 0.08) * smoothstep(-0.8, -0.3, v) * pk;
+    albedo = mix(albedo, mix(uPatA, uPatB, 0.35 * (1.0 - ndv)), m * 0.9); metal = max(metal, m * uMetal);
   } else if (uPat == 6) {                 // platinum: pearly fore-body
-    float m = smoothstep(0.04, 0.14, u) * smoothstep(0.68, 0.46, u + (vnoise(bp * 10.0 + uSeed) - 0.5) * 0.1);
-    albedo = mix(albedo, mix(uPatA, uPatB, 0.4 * (1.0 - ndv)), m * 0.9); metal = m * uMetal;
+    float m = smoothstep(0.04, 0.14, u) * smoothstep(0.68, 0.46, u + (vnoise(bp * 10.0 + uSeed) - 0.5) * 0.1) * pk;
+    albedo = mix(albedo, mix(uPatA, uPatB, 0.4 * (1.0 - ndv)), m * 0.9); metal = max(metal, m * uMetal);
   } else if (uPat == 7) {                 // dragon: metallic plates over every scale
     vec2 dq = bp / 0.026; dq.x += 0.5 * mod(floor(dq.y), 2.0);
     float e = length((fract(dq) - 0.5) * vec2(1.0, 1.2));
     float plate = smoothstep(0.5, 0.3, e);
-    float m = smoothstep(0.03, 0.12, u) * smoothstep(-0.9, -0.5, v);
+    float m = smoothstep(0.03, 0.12, u) * smoothstep(-0.9, -0.5, v) * pk;
     vec3 plateCol = mix(uPatA, hsv2rgb(vec3(fract(0.55 + 0.35 * (1.0 - ndv) + hash12(floor(dq)) * 0.15), 0.28, 1.0)), 0.35);
-    albedo = mix(albedo, mix(uPatB, plateCol, plate), m * 0.92); metal = m * uMetal;
-  } else if (uPat == 8) {                 // koi: red cap over head and nape on a pale body
-    float m = smoothstep(0.33, 0.2, u + (fbm(bp * 9.0 + uSeed) - 0.5) * 0.14) * smoothstep(-0.5, 0.05, v);
-    albedo = mix(albedo, mix(uPatA, uPatB, 0.3 * fbm(bp * 14.0)), m * 0.95);
-  } else if (uPat == 9) {                 // full red
-    float m = smoothstep(0.02, 0.1, u) * smoothstep(-0.95, -0.5, v);
-    albedo = mix(albedo, mix(uPatA, uPatB, 0.3 * fbm(bp * 10.0 + uSeed)), m * 0.88); metal = m * uMetal;
+    albedo = mix(albedo, mix(albedo, plateCol, plate), m * 0.92); metal = max(metal, m * uMetal);
   } else if (uPat == 10) {                // panda: dark body, silvery-blue head
-    float body = smoothstep(0.17, 0.3, u + (vnoise(bp * 12.0 + uSeed) - 0.5) * 0.06) * smoothstep(-0.95, -0.6, v);
-    float head = (1.0 - body) * smoothstep(-0.6, 0.0, v);
+    float body = smoothstep(0.17, 0.3, u + (vnoise(bp * 12.0 + uSeed) - 0.5) * 0.06) * smoothstep(-0.95, -0.6, v) * pk;
+    float head = (1.0 - body) * smoothstep(-0.6, 0.0, v) * pk;
     albedo = mix(albedo, uPatA, body * 0.92);
-    albedo = mix(albedo, mix(uPatB, vec3(1.0), 0.3 * (1.0 - ndv)), head * 0.8); metal = head * uMetal + body * 0.25;
-  } else if (uPat == 11) {                // galaxy: platinum fore-body, snakeskin chain behind
-    float front = smoothstep(0.04, 0.14, u) * smoothstep(0.55, 0.4, u + (vnoise(bp * 10.0 + uSeed) - 0.5) * 0.1);
-    albedo = mix(albedo, uPatA, front * 0.9);
-    vec2 sq = bp * 30.0;
-    sq += (vec2(vnoise(sq * 0.35 + uSeed), vnoise(sq * 0.35 + uSeed + 7.0)) - 0.5) * 1.4;
-    vec2 w = worley(sq);
-    float rear = smoothstep(0.38, 0.55, u) * smoothstep(-0.85, -0.45, v);
-    albedo = mix(albedo, vec3(0.86, 0.84, 0.5), 0.5 * rear);
-    albedo = mix(albedo, uPatB, smoothstep(0.17, 0.05, w.y - w.x) * rear * 0.9);
-    metal = front * uMetal;
+    albedo = mix(albedo, mix(uPatB, vec3(1.0), 0.3 * (1.0 - ndv)), head * 0.8); metal = max(metal, head * uMetal + body * 0.25);
+  }
+  if (uKoiK > 0.0) {                       // Kohaku: red cap from the snout back to a reach set by the genes
+    float reach = 0.2 + 0.3 * uKoiExt;
+    float jag = (fbm(bp * 9.0 + uSeed) - 0.5) * 0.14;
+    float cap = smoothstep(reach + 0.05, reach - 0.05, u + jag) * smoothstep(-0.55 - 0.35 * uKoiExt, 0.0, v);
+    // males: red patches down the body, more in red-rich fish ("no two large males look alike")
+    float patches = uKoiBody * smoothstep(0.66 - 0.3 * uKoiBody, 0.74 - 0.2 * uKoiBody, fbm(bp * vec2(6.0, 9.0) + uSeed * 2.3))
+      * smoothstep(0.22, 0.32, u) * smoothstep(0.92, 0.78, u) * smoothstep(-0.8, -0.3, v);
+    albedo = mix(albedo, mix(uKoiA, uKoiB, 0.3 * fbm(bp * 14.0)), max(cap, patches) * 0.95 * uKoiK);
   }
   // half-black (tuxedo): dark rear body with a ragged front edge
   if (uTux > 0.0){

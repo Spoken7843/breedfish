@@ -4,7 +4,7 @@
 // alters existing fish.
 import { rngFromSeed } from '../../core/rng.mjs';
 
-export const ART_STYLE_VERSION = 'oil-spike-0.6.0';
+export const ART_STYLE_VERSION = 'oil-spike-0.7.0';
 
 const mix = (a, b, t) => a.map((v, i) => v + (b[i] - v) * t);
 const scale = (c, k) => c.map(v => v * k);
@@ -37,24 +37,26 @@ export function profileAt(values, u) {
   return Math.max(0, 0.5 * (2 * p1 + (-p0 + p2) * t + (2 * p0 - 5 * p1 + 4 * p2 - p3) * t2 + (-p0 + 3 * p1 - 3 * p2 + p3) * t3));
 }
 
-// Shader ids (keep in sync with BODY_FS / FIN_FS).
-export const BODY_PATTERNS = { none: 0, snakeskin: 1, cobra: 2, moscow: 3, japanBlue: 4, coral: 5, platinum: 6, dragon: 7, koi: 8, fullRed: 9,
-  moscowBlack: 3, panda: 10, galaxy: 11, neonBlue: 3 };
+// Shader ids (keep in sync with BODY_FS / FIN_FS). Body colour is drawn in layers (v0.7): full red,
+// the snakeskin chain (SNAKE), one metallic/solid pattern (BODY_PATTERNS) and the Kohaku red head.
+export const BODY_PATTERNS = { none: 0, moscow: 3, japanBlue: 4, coral: 5, platinum: 6, dragon: 7, moscowBlack: 3, panda: 10, neonBlue: 3 };
+const SNAKE = { none: 0, snakeskin: 1, cobra: 2 };
 export const TAIL_PATTERNS = { none: 0, snakeskin: 1, mosaic: 2, grass: 3, leopard: 4, multi: 5 };
 
-const BODY_PATTERN_COLORS = {
+const SNAKE_COLORS = {
   snakeskin: [[0.86, 0.84, 0.48], [0.07, 0.09, 0.05], 0.15],
   cobra:     [[0.80, 0.86, 0.46], [0.06, 0.08, 0.05], 0.15],
+};
+const RED_BODY = [[0.82, 0.13, 0.11], [0.95, 0.40, 0.26]];
+const KOI_RED = [[0.94, 0.26, 0.10], [1.00, 0.55, 0.20]];
+const BODY_PATTERN_COLORS = {
   moscow:    [[0.10, 0.17, 0.38], [0.32, 0.52, 0.86], 0.8],
   japanBlue: [[0.48, 0.78, 0.96], [0.22, 0.52, 0.88], 0.9],
   coral:     [[0.95, 0.30, 0.22], [1.00, 0.58, 0.42], 0.75],
   platinum:  [[0.96, 0.96, 0.93], [0.84, 0.90, 1.00], 1.0],
   dragon:    [[0.90, 0.92, 0.95], [0.42, 0.46, 0.55], 1.0],
-  koi:       [[0.94, 0.26, 0.10], [1.00, 0.55, 0.20], 0.1],
-  fullRed:   [[0.82, 0.13, 0.11], [0.95, 0.40, 0.26], 0.25],
   moscowBlack: [[0.035, 0.035, 0.05], [0.16, 0.20, 0.32], 0.55],
   panda:     [[0.05, 0.06, 0.11], [0.78, 0.84, 0.95], 0.7],
-  galaxy:    [[0.95, 0.95, 0.92], [0.07, 0.09, 0.07], 0.9],
   neonBlue:  [[0.10, 0.50, 1.00], [0.45, 0.88, 1.00], 1.0],
 };
 
@@ -116,16 +118,26 @@ export function guppyLook(p) {
     }
     if (adult < 0.15) spots.length = 0;
   }
+  // ---- body colour layers; `k` is how strongly this fish shows each (a female shows some faint) ----
+  const strength = t => p.strength?.[t] ?? 1;
+  // Asian Blau suppresses red: the heterozygote keeps a paler red (the homozygote hides it in the genetics)
+  const redK = p.blau === 'blueMetal' ? 0.55 : 1;
+  const layer = (id, cols, k, metal = 0) => ({ id: adult < 0.1 ? 0 : id, colA: mix(flank, cols[0], adult), colB: mix(flank, cols[1], adult), metal: metal * adult, k: k * adult });
   const bp = BODY_PATTERN_COLORS[p.bodyPattern];
   const bodyPattern = bp
-    ? { id: BODY_PATTERNS[p.bodyPattern], colA: coolIfBlue(chroma(bp[0], chromaK), blue), colB: coolIfBlue(chroma(bp[1], chromaK), blue), metal: bp[2] }
-    : { id: 0, colA: [0, 0, 0], colB: [0, 0, 0], metal: 0 };
-  if (p.bodyPattern === 'snakeskin' && p.bodyBase === 'golden') bodyPattern.colA = chroma([0.95, 0.80, 0.35], chromaK);
-  if (p.albino && (p.bodyPattern === 'snakeskin' || p.bodyPattern === 'cobra')) bodyPattern.colB = [0.86, 0.42, 0.22]; // no melanin: orange chain
-  if (adult < 1) {
-    bodyPattern.colA = mix(flank, bodyPattern.colA, adult); bodyPattern.colB = mix(flank, bodyPattern.colB, adult); bodyPattern.metal *= adult;
-    if (adult < 0.1) bodyPattern.id = 0;
-  }
+    ? layer(BODY_PATTERNS[p.bodyPattern], [coolIfBlue(chroma(bp[0], chromaK), blue), coolIfBlue(chroma(bp[1], chromaK), blue)], strength('bodyPattern'), bp[2])
+    : { id: 0, colA: [0, 0, 0], colB: [0, 0, 0], metal: 0, k: 0 };
+  const sc = SNAKE_COLORS[p.snakeskin];
+  let snakeCols = sc ? [chroma(sc[0], chromaK), sc[1]] : null;
+  if (sc && p.bodyBase === 'golden') snakeCols[0] = chroma([0.95, 0.80, 0.35], chromaK);
+  if (sc && mel < 0.3) snakeCols[1] = coolIfBlue([0.86, 0.42, 0.22], blue);   // no melanin: an orange chain
+  if (sc && blue) snakeCols = snakeCols.map(c => coolIfBlue(c, blue));
+  const snake = sc ? layer(SNAKE[p.snakeskin], snakeCols, strength('snakeskin'), sc[2]) : { id: 0, colA: [0, 0, 0], colB: [0, 0, 0], metal: 0, k: 0 };
+  const fullRed = p.fullRed ? layer(1, RED_BODY.map(c => chroma(c, chromaK)), strength('fullRed') * redK, 0.25) : { id: 0, colA: [0, 0, 0], colB: [0, 0, 0], metal: 0, k: 0 };
+  // Kohaku: a red cap whose reach is the polygenic headRed; males also carry red on the body (varies)
+  const koi = p.kohaku
+    ? { ...layer(1, KOI_RED.map(c => chroma(c, chromaK)), strength('kohaku') * redK), extent: q('headRed'), body: male ? q('headRed') : 0 }
+    : { id: 0, colA: [0, 0, 0], colB: [0, 0, 0], metal: 0, k: 0, extent: 0, body: 0 };
   const tuxedo = p.tuxedo
     ? { amount: Math.max(0.15, mel) * (male ? 1 : 0.32) * (0.35 + 0.65 * adult), color: mel > 0.5 ? [0.04, 0.04, 0.06] : [0.55, 0.42, 0.40] }
     : { amount: 0, color: [0, 0, 0] };
@@ -140,12 +152,14 @@ export function guppyLook(p) {
   else if (male && p.tailPattern === 'mosaic') { tailA = [0.30, 0.48, 0.86]; tailB = [0.18, 0.30, 0.70]; tailAlpha = 0.9; }
   // wild-type tail: mostly clear olive-grey membrane, a warm wash toward the edge, black speckles
   else if (male && p.pattern) { tailA = mix([0.62, 0.63, 0.56], orange, 0.18 + 0.2 * p.saturation); tailB = mix([0.50, 0.52, 0.46], orange, 0.3 + 0.25 * p.saturation); tailAlpha = 0.62; iri = 0.25; }
-  else if (male && p.bodyPattern !== 'none') { tailA = orange; tailB = chroma(mix(orange, [0.7, 0.1, 0.15], 0.5), chromaK); tailAlpha = 0.9; }
+  else if (male && (p.bodyPattern !== 'none' || p.snakeskin !== 'none' || p.fullRed || p.kohaku)) { tailA = orange; tailB = chroma(mix(orange, [0.7, 0.1, 0.15], 0.5), chromaK); tailAlpha = 0.9; }
   else if (male) { tailA = [0.55, 0.66, 0.70]; tailB = [0.42, 0.55, 0.64]; tailAlpha = 0.72; iri = 0.45; }
   else { tailA = mix(flank, [0.8, 0.8, 0.74], 0.3); tailB = mix(flank, [0.55, 0.55, 0.5], 0.4); tailAlpha = 0.55; iri = 0.1; }
   tailA = coolIfBlue(chroma(tailA, chromaK), blue); tailB = coolIfBlue(chroma(tailB, chromaK), blue);
   // females carry the line colour deeper and duskier than males (dark membrane, light rays)
-  if (!male && p.tailColor !== 'natural') { tailA = mix(tailA, [0.07, 0.08, 0.16], 0.55); tailB = mix(tailB, [0.04, 0.04, 0.10], 0.65); }
+  // (koi females keep a clear red caudal like their red head: "a red head and a red caudal fin")
+  const dusk = p.kohaku ? 0.25 : 1;
+  if (!male && p.tailColor !== 'natural') { tailA = mix(tailA, [0.07, 0.08, 0.16], 0.55 * dusk); tailB = mix(tailB, [0.04, 0.04, 0.10], 0.65 * dusk); }
   // colour coverage: low-coverage fins show more clear membrane between the colour
   if (TAIL_COLORS[p.tailColor] || (male && p.tailPattern !== 'none')) {
     const clear = mix(flank, [0.8, 0.8, 0.74], 0.3);
@@ -161,7 +175,9 @@ export function guppyLook(p) {
   const shape = male ? p.tailShape : (fancyFemale ? 'fan' : 'round');
   const TAIL_LENGTH = { delta: 1.0, veil: 1.12, halfMoon: 0.95, fan: 0.8, flag: 1.0, round: 0.5, spade: 0.55, spear: 0.7, pin: 0.55, lyre: 0.78,
     topSword: 0.62, bottomSword: 0.62, doubleSword: 0.62 };
-  const tailPat = male ? (TAIL_PATTERNS[p.tailPattern] || (p.tailColor === 'multi' ? TAIL_PATTERNS.multi : 0)) : 0;
+  // females show at most a faint lace of a male tail pattern (strength < 1)
+  const tailPat = male ? (TAIL_PATTERNS[p.tailPattern] || (p.tailColor === 'multi' ? TAIL_PATTERNS.multi : 0)) : (p.tailPattern !== 'none' ? TAIL_PATTERNS[p.tailPattern] : 0);
+  const tailPatK = male ? 1 : strength('tailPattern');
   const patDark = mel > 0.3 ? [0.05, 0.04, 0.05] : coolIfBlue([0.80, 0.32, 0.16], blue);
   const fullLength = (male ? TAIL_LENGTH[shape] * (0.7 + 0.45 * q('tailSize')) : (fancyFemale ? 0.5 : 0.36) * (0.85 + 0.25 * q('tailSize')));
   const tail = {
@@ -169,7 +185,7 @@ export function guppyLook(p) {
     colorA: tailA, colorB: tailB, alpha: tailAlpha,
     speckle: (male ? (p.pattern && !tailPat ? 0.5 : 0.15) : 0.12) * mel,
     iridescence: iri, border: p.tailBorder ? mel : 0,
-    pattern: tailPat, patDark, patLight: mix(tailA, [1, 1, 0.9], 0.35),
+    pattern: tailPat, patDark: tailPatK < 1 ? mix(tailA, patDark, tailPatK * 1.6) : patDark, patLight: mix(tailA, [1, 1, 0.9], 0.35 * tailPatK),
     sword: male && adult >= 0.3 ? (shape === 'doubleSword' ? 3 : shape === 'topSword' ? 1 : shape === 'bottomSword' ? 2 : 0) : 0,
   };
   if (adult < 0.3) tail.pattern = 0;
@@ -202,7 +218,7 @@ export function guppyLook(p) {
     colors: { dorsal, flank, belly },
     melanin: mel, reticulation: retic * mel, sheen: male ? 0.55 : 0.2,
     spots, gravid: !male ? 0.8 * mel * smooth(0.85, 1, grown) : 0,
-    bodyPattern, tuxedo,
+    bodyPattern, snake, fullRed, koi, tuxedo,
     eye: { u: male ? 0.085 : 0.08, y: 0.022, radius: 0.04,
       pupil: p.albino ? [0.75, 0.16, 0.2] : p.redEye ? [0.62, 0.06, 0.08] : p.lutino ? [0.36, 0.06, 0.10] : [0.03, 0.03, 0.04] },
     tail, dorsalFin, anal, pectoral,

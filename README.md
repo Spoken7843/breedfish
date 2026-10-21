@@ -15,6 +15,7 @@ Simulador de criação de guppy no navegador, com genética de verdade e visual 
 - **Dois modos, cada um com seu save:**
   - **Rápido:** cada cruzamento dá filhotes já adultos, na hora; ninguém cruza sem você mandar.
   - **Realista:** o plantel no tempo, abaixo.
+- **Cor em camadas:** o corpo soma full red, snakeskin, padrão metálico e a cabeça vermelha do koi (Koi Snakeskin, Full Red Snakeskin, Galaxy Koi…). Fêmeas mostram o que a fêmea real mostra: cabeça koi, full red mais fraco, renda snakeskin na cauda. Blue e Asian Blau apagam o vermelho.
 - **Escolher no aquário:** toque num peixe nadando para ver quem é e usar como mãe ou pai. Cada card tem a foto do peixe.
 - **Plantel no tempo (Realista):**
   - Aquários e lago com lotação, temperatura e comida.

@@ -4,7 +4,7 @@ import { findLocus, validateSpecies, yLocus } from './species.mjs';
 export { phenotype, displayTraits } from './phenotype.mjs';
 
 /** Bump when meiosis, mutation or expression rules change the individuals produced from the same inputs. */
-export const ENGINE_VERSION = '0.5.0';
+export const ENGINE_VERSION = '0.6.0';
 
 // Genome: {chromosomes:{C1:[[allele,...],[allele,...]], ...}, sexChromosomes:['X','Y'], yPattern: 'ornate'|null,
 //          x: [[allele,...] per X]} (x only for species with an xChromosome; XX has two haplotypes, XY one).

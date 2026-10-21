@@ -31,8 +31,8 @@ export const GUPPY_STRAINS = [
     note: 'Half-black com cauda clara, rosada.' },
   { id: 'hbMosaic', name: 'Tuxedo mosaico · HB Blue Mosaic', y: 'blueTail', alleles: fancy({ Ni: hom('Ni'), Mo: hom('Mo'), Fc: hom('Bl') }),
     note: 'Half-black com cauda em mosaico sobre azul.' },
-  { id: 'koiTuxedo', name: 'Koi tuxedo', y: 'koi', alleles: fancy({ Ni: hom('Ni'), Nb: hom('Nb'), Fc: hom('R'), Sat: hom('H') }),
-    note: 'Cabeça vermelha, frente branca, traseira preta e cauda vermelha.' },
+  { id: 'koiTuxedo', name: 'Koi tuxedo', y: 'redTail', alleles: fancy({ Ni: hom('Ni'), Ko: hom('Ko'), Blo: hom('b'), Fc: hom('R'), Sat: hom('H') }), koi: true,
+    note: 'Cabeça vermelha (Kohaku, nos dois sexos), frente clara, traseira preta e cauda vermelha.' },
   { id: 'hbAlbino', name: 'Tuxedo albino · RREA HB Red', y: 'redTail', alleles: fancy({ Ni: hom('Ni'), Alb: hom('a'), Fc: hom('R'), Sat: hom('H') }),
     note: 'Sem melanina, o preto do tuxedo vira um rosado claro.' },
   // ---- snakeskin, cobra and tail patterns ----
@@ -43,7 +43,7 @@ export const GUPPY_STRAINS = [
   { id: 'kingCobra', name: 'King cobra', y: 'cobra', alleles: fancy({}, 'Vl'),
     note: 'Rosetas e barras verticais na parte de trás do corpo.' },
   { id: 'galaxy', name: 'Galaxy', y: 'galaxy', alleles: fancy({}),
-    note: 'Platinum na frente do corpo com snakeskin atrás.' },
+    note: 'Um Y que carrega dois genes juntos: platinum na frente do corpo e snakeskin no resto.' },
   { id: 'blueMosaic', name: 'Mosaico azul · Blue Mosaic', y: 'blueTail', alleles: fancy({ Mo: hom('Mo'), Fc: hom('Bl') }),
     note: 'Cauda em ladrilhos irregulares escuros sobre azul.' },
   { id: 'redGrass', name: 'Grass vermelho · Red Grass', y: 'redTail', alleles: fancy({ Gra: hom('Gra'), Fc: hom('R'), Sat: hom('H') }),
@@ -57,10 +57,10 @@ export const GUPPY_STRAINS = [
   { id: 'fullGold', name: 'Full gold · amarelo', y: 'yellowTail', alleles: fancy({ Gol: hom('g'), Fc: hom('Ye'), Sat: hom('H') }),
     note: 'Corpo golden com nadadeiras amarelas.' },
   // ---- solid, metallic and head patterns ----
-  { id: 'koi', name: 'Koi', y: 'koi', alleles: fancy({ Nb: hom('Nb'), Fc: hom('R'), Sat: hom('H') }),
-    note: 'Corpo branco com cabeça e cauda vermelhas.' },
-  { id: 'albinoKoi', name: 'Koi albino', y: 'koi', alleles: fancy({ Alb: hom('a'), Fc: hom('R'), Sat: hom('H') }),
-    note: 'Koi com olho vermelho (a/a).' },
+  { id: 'koi', name: 'Koi', y: 'redTail', alleles: fancy({ Ko: hom('Ko'), Blo: hom('b'), Fc: hom('R'), Sat: hom('H') }), koi: true,
+    note: 'Corpo claro com cabeça e cauda vermelhas. A fêmea também tem cabeça e cauda vermelhas; nos machos o vermelho varia e pode descer pelo corpo.' },
+  { id: 'albinoKoi', name: 'Koi albino', y: 'redTail', alleles: fancy({ Ko: hom('Ko'), Alb: hom('a'), Fc: hom('R'), Sat: hom('H') }), koi: true,
+    note: 'Koi com olho vermelho (a/a): vermelho e branco, sem preto.' },
   { id: 'redDragon', name: 'Red dragon', y: 'dragon', alleles: fancy({ Fc: hom('R'), Sat: hom('H') }),
     note: 'Escamas metálicas em placas no corpo e cauda vermelha forte.' },
   { id: 'moscowBlue', name: 'Moscow blue veil', y: 'moscow', alleles: fancy({ Fc: hom('Bl') }, 'Vl'),
@@ -79,7 +79,7 @@ export const GUPPY_STRAINS = [
     note: 'Vermelho metálico na frente do corpo.' },
   // ---- eye and body mutations ----
   { id: 'fullRedAlbino', name: 'RREA Full Red', y: 'fullRed', alleles: fancy({ Alb: hom('a'), Fc: hom('R'), Sat: hom('H') }),
-    note: 'Albino de olho vermelho, corpo e nadadeiras vermelhos.' },
+    note: 'Albino de olho vermelho, corpo e nadadeiras vermelhos. A fêmea também fica avermelhada, mais fraca.' },
   { id: 'rre', name: 'RRE Red · real red eye', y: 'redTail', alleles: fancy({ Rre: hom('re'), Fc: hom('R'), Sat: hom('H') }),
     note: 'Olho vermelho sem ser albino: o corpo mantém a melanina.' },
   { id: 'lutino', name: 'Lutino', y: 'redTail', alleles: fancy({ Lut: hom('w'), Fc: hom('R') }),
@@ -116,7 +116,7 @@ export const GUPPY_STRAINS = [
 // Polygenic profile of a line: frequency of the increasing allele for each quantitative trait.
 // Show lines have been selected for big, open, fully coloured fins; wild stock has small clear fins.
 // Game values (TBD); each founder draws its own alleles, so founders of one line differ.
-const Q_FANCY = { tailSize: 0.75, tailSpread: 0.7, dorsalSize: 0.65, colorCoverage: 0.75, bodySize: 0.6 };
+const Q_FANCY = { tailSize: 0.75, tailSpread: 0.7, dorsalSize: 0.65, colorCoverage: 0.75, bodySize: 0.6, headRed: 0.3 };
 const Q_SHORT = { tailSize: 0.45, tailSpread: 0.45, dorsalSize: 0.5, colorCoverage: 0.6, bodySize: 0.5 };
 const Q_WILD = { tailSize: 0.2, tailSpread: 0.25, dorsalSize: 0.25, colorCoverage: 0.3, bodySize: 0.35 };
 const SHORT_TAILS = new Set(['doubleSword', 'topSword', 'bottomSword', 'spade', 'spear', 'pintail', 'lyre']);
@@ -124,6 +124,7 @@ const SHORT_TAILS = new Set(['doubleSword', 'topSword', 'bottomSword', 'spade', 
 /** Polygenic profile of a strain (`strain.quant` overrides). */
 export function strainQuant(strain) {
   if (strain.quant) return strain.quant;
+  if (strain.koi) return { ...Q_FANCY, headRed: 0.7 };   // koi lines are selected for a big red cap
   if (strain.id === 'wild') return Q_WILD;
   if (SHORT_TAILS.has(strain.id)) return Q_SHORT;
   if (strain.id === 'halfMoon') return { ...Q_FANCY, tailSpread: 0.92 };
@@ -131,7 +132,8 @@ export function strainQuant(strain) {
 }
 
 /** Haplotypes the sources describe as Y-linked only (docs/research.md): the line's females carry nothing of them. */
-export const Y_ONLY_PATTERNS = new Set(['moscow', 'moscowBlack', 'japanBlue', 'coral']);
+// Panda is a Moscow form (Bias: "Pink Moscow (Panda)"), so it is Y-only too (v7).
+export const Y_ONLY_PATTERNS = new Set(['moscow', 'moscowBlack', 'japanBlue', 'coral', 'panda']);
 
 /** Sex-linked pattern a strain carries on its X chromosomes (both sexes); `strain.x` overrides. */
 export function strainX(strain) {

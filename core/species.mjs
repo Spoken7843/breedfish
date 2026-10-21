@@ -15,8 +15,13 @@ import { hashString, rngFromSeed } from './rng.mjs';
 // Trait types: bool | enum | number. A bool fed by several effects needs combine 'any'|'all'; an enum fed
 // by several needs combine 'priority' with a `priority` list (first wins). Number traits sum base +
 // additive contributions + developmental noise, then clamp. sexLimited: only expressed in that observed
-// sex. epistasis: ordered rules applied after all loci; `when` reads a resolved trait, `set` overrides.
-// expressedIn (locus): the locus only acts in that observed sex (carried silently by the other).
+// sex. epistasis: ordered rules applied after all loci; `when` reads a resolved trait, `set` overrides,
+// `map` turns listed values of a trait into others.
+// expressedIn (locus or effect): only acts in that observed sex (carried silently by the other).
+// codominant (mendelian locus with `values`): every allele present acts, not only the most dominant one
+// (a haplotype block: a female's two X both show their genes).
+// female (effect, 0..1): the effect also acts in females, at that strength (a male colour that shows
+// faint in females); the phenotype lists such weakened traits in `strength`.
 // carrierFrequency (deleterious locus): share of founders from the source population that carry one
 // hidden copy (heterozygous; drawn by founderLoad). visible: false (trait): exists in the phenotype for
 // the simulation (viability, fertility) but a breeder cannot see it; UIs never list it.
@@ -56,17 +61,26 @@ const GUPPY_Y_ALLELES = ['plain', 'ornate', 'snakeskin', 'cobra', 'moscow', 'jap
   'moscowBlack', 'panda', 'galaxy', 'neonBlue', 'yellowTail', 'purpleTail', 'greenTail', 'multiTail'];
 /** Y haplotype effect table: every allele maps to null unless listed. */
 const yValues = listed => Object.fromEntries(GUPPY_Y_ALLELES.map(a => [a, a in listed ? listed[a] : null]));
-/** What each sex-linked pattern haplotype does; shared by the Y locus and its X-linked copy. */
+/**
+ * What each sex-linked haplotype does; shared by the Y locus and its X-linked copy. A haplotype is a
+ * block of linked genes, so one can carry several layers (galaxy = platinum + snakeskin), and the layers
+ * of a male's X and Y add up (snakeskin from one, full red from the other). Most male colour genes act
+ * only in males [19]; full red, platinum/dragon metal and the snakeskin tail lace also show, weaker, in
+ * females of those lines [20][22] (strengths TBD). Koi left the sex chromosomes in v7: the red head is
+ * the autosomal Kohaku locus (Ko); the 'koi' haplotype survives only as a red tail for old codes.
+ */
 const GUPPY_SEX_PATTERN_EFFECTS = [
-  { trait: 'pattern', values: yValues({ ornate: true, doubleSword: true, topSword: true, bottomSword: true }) },
-  { trait: 'bodyPattern', values: yValues({ snakeskin: 'snakeskin', cobra: 'cobra', moscow: 'moscow', japanBlue: 'japanBlue', coral: 'coral',
-    platinum: 'platinum', dragon: 'dragon', koi: 'koi', fullRed: 'fullRed', moscowBlack: 'moscowBlack', panda: 'panda', galaxy: 'galaxy',
-    neonBlue: 'neonBlue' }) },
-  { trait: 'tailPattern', values: yValues({ snakeskin: 'snakeskin', cobra: 'snakeskin', galaxy: 'snakeskin' }) },
-  { trait: 'tailColor', values: yValues({ koi: 'red', dragon: 'red', fullRed: 'red', redTail: 'red', coral: 'red', blueTail: 'blue',
+  { trait: 'pattern', expressedIn: 'male', values: yValues({ ornate: true, doubleSword: true, topSword: true, bottomSword: true }) },
+  { trait: 'snakeskin', expressedIn: 'male', values: yValues({ snakeskin: 'snakeskin', cobra: 'cobra', galaxy: 'snakeskin' }) },
+  { trait: 'bodyPattern', expressedIn: 'male', values: yValues({ moscow: 'moscow', japanBlue: 'japanBlue', coral: 'coral', moscowBlack: 'moscowBlack',
+    panda: 'panda', neonBlue: 'neonBlue' }) },
+  { trait: 'bodyPattern', female: 0.4, values: yValues({ platinum: 'platinum', dragon: 'dragon', galaxy: 'platinum' }) },
+  { trait: 'fullRed', female: 0.55, values: yValues({ fullRed: true }) },
+  { trait: 'tailPattern', female: 0.3, values: yValues({ snakeskin: 'snakeskin', cobra: 'snakeskin', galaxy: 'snakeskin' }) },
+  { trait: 'tailColor', expressedIn: 'male', values: yValues({ koi: 'red', dragon: 'red', fullRed: 'red', redTail: 'red', coral: 'red', blueTail: 'blue',
     japanBlue: 'blue', moscow: 'dark', platinum: 'white', moscowBlack: 'dark', panda: 'dark', neonBlue: 'blue', yellowTail: 'yellow',
     purpleTail: 'purple', greenTail: 'green', multiTail: 'multi' }) },
-  { trait: 'tailShape', values: yValues({ doubleSword: 'doubleSword', topSword: 'topSword', bottomSword: 'bottomSword' }) },
+  { trait: 'tailShape', expressedIn: 'male', values: yValues({ doubleSword: 'doubleSword', topSword: 'topSword', bottomSword: 'bottomSword' }) },
 ];
 
 const label = (text, labels) => ({ label: text, ...(labels ? { labels } : {}) });
@@ -76,7 +90,7 @@ const poly = (id, positionCm, trait, step) => ({ id, positionCm, alleles: ['+', 
 
 export const SPECIES = {
   guppy: {
-    id: 'guppy', label: 'Guppy', version: 6, view: 'lateral', reproductiveMode: 'livebearer',
+    id: 'guppy', label: 'Guppy', version: 7, view: 'lateral', reproductiveMode: 'livebearer',
     sexSystem: 'XY', sexReversalTemperatureC: null,
     spermStorage: true, eggCannibalism: false,
     growth: { adultAgeDays: 90 }, // TBD
@@ -113,16 +127,19 @@ export const SPECIES = {
       redEye:       { type: 'bool', default: false, ...label('Real red eye') },
       lutino:       { type: 'bool', default: false, ...label('Lutino') },
       pattern:      { type: 'bool', default: false, combine: 'any', sexLimited: 'male', ...label('Manchas selvagens') },
-      bodyPattern:  { type: 'enum', default: 'none', sexLimited: 'male',
-                      options: ['none', 'snakeskin', 'cobra', 'moscow', 'japanBlue', 'coral', 'platinum', 'dragon', 'koi', 'fullRed',
-                        'moscowBlack', 'panda', 'galaxy', 'neonBlue'],
+      // Body colour comes in layers that add up: full red, the snakeskin chain, a metallic or solid
+      // pattern and the Kohaku red head (v7). Only within one layer does one value hide another.
+      bodyPattern:  { type: 'enum', default: 'none',
+                      options: ['none', 'moscow', 'japanBlue', 'coral', 'platinum', 'dragon', 'moscowBlack', 'panda', 'neonBlue'],
                       // X and Y both feed it; the visually dominant pattern wins (order TBD)
-                      combine: 'priority', priority: ['moscowBlack', 'moscow', 'panda', 'galaxy', 'neonBlue', 'dragon', 'snakeskin', 'cobra',
-                        'fullRed', 'koi', 'coral', 'japanBlue', 'platinum', 'none'],
-                      ...label('Padrão do corpo', { none: 'Nenhum', snakeskin: 'Snakeskin', cobra: 'Cobra', moscow: 'Moscow', japanBlue: 'Japan blue',
-                        coral: 'Coral', platinum: 'Platinum', dragon: 'Dragon', koi: 'Koi', fullRed: 'Full red', moscowBlack: 'Moscow preto',
-                        panda: 'Panda', galaxy: 'Galaxy', neonBlue: 'Neon blue' }) },
-      tailPattern:  { type: 'enum', default: 'none', sexLimited: 'male', options: ['none', 'snakeskin', 'mosaic', 'grass', 'leopard'],
+                      combine: 'priority', priority: ['moscowBlack', 'moscow', 'panda', 'neonBlue', 'dragon', 'coral', 'japanBlue', 'platinum', 'none'],
+                      ...label('Padrão metálico', { none: 'Nenhum', moscow: 'Moscow', japanBlue: 'Japan blue', coral: 'Coral', platinum: 'Platinum',
+                        dragon: 'Dragon', moscowBlack: 'Moscow preto', panda: 'Panda', neonBlue: 'Neon blue' }) },
+      snakeskin:    { type: 'enum', default: 'none', options: ['none', 'snakeskin', 'cobra'], combine: 'priority', priority: ['cobra', 'snakeskin', 'none'],
+                      ...label('Snakeskin no corpo', { none: 'Não', snakeskin: 'Snakeskin', cobra: 'Cobra (barras)' }) },
+      fullRed:      { type: 'bool', default: false, combine: 'any', ...label('Full red (corpo vermelho)') },
+      kohaku:       { type: 'bool', default: false, ...label('Cabeça vermelha (koi)') },
+      tailPattern:  { type: 'enum', default: 'none', options: ['none', 'snakeskin', 'mosaic', 'grass', 'leopard'],
                       combine: 'priority', priority: ['snakeskin', 'mosaic', 'leopard', 'grass', 'none'],
                       ...label('Padrão da cauda', { none: 'Liso', snakeskin: 'Snakeskin', mosaic: 'Mosaico', grass: 'Grass', leopard: 'Leopardo' }) },
       tailColor:    { type: 'enum', default: 'natural', options: ['natural', 'red', 'blue', 'white', 'dark', 'yellow', 'purple', 'green', 'multi', 'pastel'],
@@ -151,6 +168,9 @@ export const SPECIES = {
       dorsalSize:    { type: 'number', base: 0.1, noise: 0.12, noiseShape: 'normal', min: 0, max: 1, ...label('Tamanho da dorsal') },
       colorCoverage: { type: 'number', base: 0.1, noise: 0.12, noiseShape: 'normal', min: 0, max: 1, ...label('Cobertura de cor') },
       bodySize:      { type: 'number', base: 0.1, noise: 0.10, noiseShape: 'normal', min: 0, max: 1, ...label('Porte') },
+      // how far the Kohaku red reaches: a cap on the head up to the nape and, in males, red patches on the
+      // body; "an individually different degree of red" between males of one line [20]. Polygenic (TBD).
+      headRed:       { type: 'number', base: 0.1, noise: 0.1, noiseShape: 'normal', min: 0, max: 1, ...label('Vermelho da cabeça') },
     },
     chromosomes: [
       { id: 'C1', lengthCm: 85, loci: [
@@ -161,6 +181,7 @@ export const SPECIES = {
         // linked to blond on purpose: the wanted trait can drag a deleterious neighbour (GDD)
         { id: 'Lt1', positionCm: 58, alleles: ['+', 'l'], kind: 'deleterious', carrierFrequency: 0.1, effect: { trait: 'embryoLethal', values: { '+': false, l: true } } },
         poly('Cv1', 75, 'colorCoverage', 0.1),
+        poly('Hr1', 82, 'headRed', 0.11),
       ] },
       { id: 'C2', lengthCm: 95, loci: [
         // a tail-size locus sits right next to the tail-shape series
@@ -176,15 +197,19 @@ export const SPECIES = {
       { id: 'C3', lengthCm: 80, loci: [
         { id: 'Vi1', positionCm: 10, alleles: ['+', 'v'], kind: 'deleterious', carrierFrequency: 0.1, effect: { trait: 'fryLethal', values: { '+': false, v: true } } },
         poly('Cv2', 25, 'colorCoverage', 0.1),
+        // Kohaku: red head (and red caudal) in both sexes [20][21]; dominant here, inheritance TBD (no source
+        // gives it; females showing it rules out Y-only). Blue (r) and Asian Blau hide it (epistasis).
+        { id: 'Ko', positionCm: 33, alleles: ['Ko', '+'], wild: '+', kind: 'mendelian', effect: { trait: 'kohaku', values: { Ko: true, '+': false } } },
         { id: 'Pat', positionCm: 42, alleles: ['P', 'p'], kind: 'mendelian', effect: { trait: 'pattern', values: { P: true, p: false } } },
         poly('Tz3', 55, 'tailSize', 0.08),
-        { id: 'Mo', positionCm: 70, alleles: ['Mo', '+'], wild: '+', kind: 'mendelian', effect: { trait: 'tailPattern', values: { Mo: 'mosaic', '+': null } } }, // inheritance TBD
+        { id: 'Mo', positionCm: 70, alleles: ['Mo', '+'], wild: '+', kind: 'mendelian', effect: { trait: 'tailPattern', expressedIn: 'male', values: { Mo: 'mosaic', '+': null } } }, // inheritance TBD
         poly('Bz2', 78, 'bodySize', 0.1),
       ] },
       { id: 'C4', lengthCm: 75, loci: [
         poly('Tw2', 5, 'tailSpread', 0.1),
         { id: 'Sat', positionCm: 16, alleles: ['H', 'L'], kind: 'additive', effect: { trait: 'saturation', perAllele: { H: 0.23, L: 0 } } },
         poly('Dz2', 32, 'dorsalSize', 0.1),
+        poly('Hr2', 40, 'headRed', 0.11),
         { id: 'Gol', positionCm: 50, alleles: ['+', 'g'], kind: 'mendelian', effect: { trait: 'bodyBase', values: { '+': null, g: 'golden' } } },
         // Real red eye: red eyes without albinism; inheritance TBD (recessive here).
         poly('Cv3', 60, 'colorCoverage', 0.1),
@@ -205,6 +230,7 @@ export const SPECIES = {
         poly('Dz3', 35, 'dorsalSize', 0.1),
         { id: 'Dum', positionCm: 45, alleles: ['+', 'du'], kind: 'mendelian', effect: { trait: 'bigEar', values: { '+': false, du: true } } }, // inheritance TBD
         { id: 'Vi2', positionCm: 50, alleles: ['+', 'v'], kind: 'deleterious', carrierFrequency: 0.1, effect: { trait: 'fryLethal', values: { '+': false, v: true } } },
+        poly('Hr3', 57, 'headRed', 0.11),
       ] },
       { id: 'C7', lengthCm: 70, loci: [
         poly('Tz5', 15, 'tailSize', 0.08),
@@ -215,6 +241,7 @@ export const SPECIES = {
         poly('Tw4', 65, 'tailSpread', 0.1),
       ] },
       { id: 'C8', lengthCm: 65, loci: [
+        poly('Hr4', 5, 'headRed', 0.11),
         // Asian Blau: blue metallic as heterozygote, white as homozygote (incomplete dominance).
         { id: 'Nb', positionCm: 15, alleles: ['+', 'Nb'], kind: 'mendelian',
           effect: { trait: 'blau', genotypes: { '+/+': 'none', '+/Nb': 'blueMetal', 'Nb/Nb': 'white' } } },
@@ -230,9 +257,9 @@ export const SPECIES = {
     // Half-black (Nigrocaudatus), grass and leopard are X-linked in the sources [3][4] (since v6).
     xChromosome: { id: 'X', lengthCm: 50, loci: [
       { id: 'Ni', positionCm: 10, alleles: ['Ni', '+'], wild: '+', kind: 'mendelian', effect: { trait: 'tuxedo', values: { Ni: true, '+': false } } },
-      { id: 'Xc', positionCm: 25, alleles: GUPPY_Y_ALLELES, kind: 'mendelian', expressedIn: 'male', effects: GUPPY_SEX_PATTERN_EFFECTS },
-      { id: 'Gra', positionCm: 35, alleles: ['Gra', '+'], wild: '+', kind: 'mendelian', effect: { trait: 'tailPattern', values: { Gra: 'grass', '+': null } } },
-      { id: 'Le', positionCm: 45, alleles: ['Le', '+'], wild: '+', kind: 'mendelian', effect: { trait: 'tailPattern', values: { Le: 'leopard', '+': null } } }, // dominance TBD
+      { id: 'Xc', positionCm: 25, alleles: GUPPY_Y_ALLELES, kind: 'mendelian', codominant: true, effects: GUPPY_SEX_PATTERN_EFFECTS },
+      { id: 'Gra', positionCm: 35, alleles: ['Gra', '+'], wild: '+', kind: 'mendelian', effect: { trait: 'tailPattern', expressedIn: 'male', values: { Gra: 'grass', '+': null } } },
+      { id: 'Le', positionCm: 45, alleles: ['Le', '+'], wild: '+', kind: 'mendelian', effect: { trait: 'tailPattern', expressedIn: 'male', values: { Le: 'leopard', '+': null } } }, // dominance TBD
     ] },
     // One Y-linked locus whose alleles are Y haplotypes; stored in genome.yPattern. Rarely it swaps with
     // its X partner in male meiosis (~3 crossovers in 669 progeny; colour factors can move to the X:
@@ -240,11 +267,16 @@ export const SPECIES = {
     sexLoci: {
       Y_Cob: { chromosome: 'Y', alleles: GUPPY_Y_ALLELES, default: 'plain', effects: GUPPY_SEX_PATTERN_EFFECTS, xPartner: 'Xc', xyRecombination: 0.005 },
     },
+    // Blue (csf1ra) fish have no xanthophores, so no orange or red at all [18]; Asian Blau suppresses red,
+    // and as a homozygote (white) hides it [19]. The heterozygote's weaker red is drawn by the art.
     epistasis: [
       { when: { trait: 'lutino', equals: true }, set: { melanin: 0.4 } },
       { when: { trait: 'albino', equals: true }, set: { melanin: 0 } },
+      { when: { trait: 'noOrange', equals: true }, set: { kohaku: false, fullRed: false },
+        map: { tailColor: { red: 'white', yellow: 'white', pastel: 'white', multi: 'blue' } } },
+      { when: { trait: 'blau', equals: 'white' }, set: { kohaku: false, fullRed: false } },
     ],
-    phenotypeModel: 'varieties_v3'
+    phenotypeModel: 'varieties_v4'
   },
   medaka: {
     id: 'medaka', label: 'Medaka', version: 1, view: 'top', reproductiveMode: 'egg_layer',
@@ -326,7 +358,10 @@ const GUPPY_LAYOUTS = {
     C4: ['Tw2', 'Sat', 'Dz2', 'Gol', 'Cv3', 'Rre'], C5: ['Tz4', 'Ste', 'Luz', 'Bz3', 'Blu', 'Lut'], C6: ['Tw3', 'Def', 'Dz3', 'Dum', 'Vi2'],
     C7: ['Tz5', 'Fc', 'Cv4', 'Tw4'], C8: ['Nb', 'Dz4', 'Bz4', 'Lt2'] },
 };
-const GUPPY_X_LAYOUTS = { 5: ['Xc'], 6: ['Ni', 'Xc', 'Gra', 'Le'] };
+GUPPY_LAYOUTS[7] = { ...GUPPY_LAYOUTS[6],
+  C1: [...GUPPY_LAYOUTS[6].C1, 'Hr1'], C3: ['Vi1', 'Cv2', 'Ko', 'Pat', 'Tz3', 'Mo', 'Bz2'], C4: ['Tw2', 'Sat', 'Dz2', 'Hr2', 'Gol', 'Cv3', 'Rre'],
+  C6: [...GUPPY_LAYOUTS[6].C6, 'Hr3'], C8: ['Hr4', ...GUPPY_LAYOUTS[6].C8] };
+const GUPPY_X_LAYOUTS = { 5: ['Xc'], 6: ['Ni', 'Xc', 'Gra', 'Le'], 7: ['Ni', 'Xc', 'Gra', 'Le'] };
 /**
  * v5 -> v6: Ni, Gra and Le move from autosomes to the X (an XY keeps the allele of its first homolog,
  * the one it shows as hemizygous), and the new polygenic loci are drawn with frequency 1/2 from a
@@ -354,6 +389,29 @@ function toV6(species, genome) {
   }
   return { ...genome, chromosomes, x };
 }
+/**
+ * v6 -> v7: koi leaves the sex chromosomes. Each 'koi' haplotype (X or Y) becomes a red tail and gives
+ * the fish one copy of the autosomal Kohaku allele (two at most). The new red-head polygenes are drawn
+ * from a hash of the old genome (koi fish lean red-headed). Old koi lines made their white body with
+ * Asian Blau, which now hides red; those fish get a blond body instead, so a koi stays a koi.
+ */
+function toV7(species, genome) {
+  const xi = GUPPY_X_LAYOUTS[6].indexOf('Xc');
+  const xs = genome.x ?? [];
+  const koi = Math.min(2, (genome.yPattern === 'koi' ? 1 : 0) + xs.filter(h => h[xi] === 'koi').length);
+  const x = xs.map(h => h.map((a, i) => (i === xi && a === 'koi' ? 'redTail' : a)));
+  const g = relayout(species, GUPPY_LAYOUTS[6], GUPPY_LAYOUTS[7], { ...genome, x, yPattern: genome.yPattern === 'koi' ? 'redTail' : genome.yPattern });
+  const at = id => { for (const [chr, ids] of Object.entries(GUPPY_LAYOUTS[7])) { const i = ids.indexOf(id); if (i !== -1) return [chr, i]; } return null; };
+  const set = (id, pair) => { const [chr, i] = at(id); g.chromosomes[chr][0][i] = pair[0]; g.chromosomes[chr][1][i] = pair[1]; };
+  const get = id => { const [chr, i] = at(id); return [g.chromosomes[chr][0][i], g.chromosomes[chr][1][i]]; };
+  const rng = rngFromSeed(hashString('v7:' + JSON.stringify(genome)));
+  for (const id of ['Hr1', 'Hr2', 'Hr3', 'Hr4']) set(id, [0, 1].map(() => (rng() < (koi ? 0.75 : 0.5) ? '+' : '-')));
+  if (koi) {
+    set('Ko', koi === 2 ? ['Ko', 'Ko'] : ['Ko', '+']);
+    if (get('Nb').includes('Nb')) { set('Nb', ['+', '+']); set('Blo', ['b', 'b']); }
+  }
+  return g;
+}
 /** v3 -> v4: add the X with its (then single) pattern locus as wild type, one haplotype per X. */
 function addX(genome) {
   return { ...genome, x: genome.sexChromosomes.filter(s => s === 'X').map(() => ['plain']) };
@@ -366,9 +424,10 @@ SPECIES.guppy.migrations = {
   3: genome => addX(genome),
   4: genome => relayout(SPECIES.guppy, GUPPY_LAYOUTS[3], GUPPY_LAYOUTS[5], genome),
   5: genome => toV6(SPECIES.guppy, genome),
+  6: genome => toV7(SPECIES.guppy, genome),
 };
-if (JSON.stringify(layoutOf(SPECIES.guppy)) !== JSON.stringify(GUPPY_LAYOUTS[6])
-  || JSON.stringify(SPECIES.guppy.xChromosome.loci.map(l => l.id)) !== JSON.stringify(GUPPY_X_LAYOUTS[6])) {
+if (JSON.stringify(layoutOf(SPECIES.guppy)) !== JSON.stringify(GUPPY_LAYOUTS[7])
+  || JSON.stringify(SPECIES.guppy.xChromosome.loci.map(l => l.id)) !== JSON.stringify(GUPPY_X_LAYOUTS[7])) {
   throw Error('guppy chromosome layout changed: add a layout and a migration');
 }
 
@@ -397,6 +456,8 @@ export function locusEffects(locus) {
 function checkEffect(species, owner, effect, alleles, kind, contributors) {
   const trait = species.traits[effect?.trait];
   if (!trait) throw Error(`${owner}: effect targets unknown trait`);
+  if (effect.expressedIn !== undefined && !['male', 'female'].includes(effect.expressedIn)) throw Error(`${owner}: invalid effect expressedIn`);
+  if (effect.female !== undefined && !(effect.female >= 0 && effect.female <= 1)) throw Error(`${owner}: effect female strength in [0, 1]`);
   if (kind === 'additive') {
     if (trait.type !== 'number') throw Error(`${owner}: additive effect needs a number trait`);
     for (const a of alleles) if (!Number.isFinite(effect.perAllele?.[a])) throw Error(`${owner}: missing perAllele for ${a}`);
@@ -470,6 +531,7 @@ export function validateSpecies(species) {
       if (locus.wild !== undefined && !locus.alleles.includes(locus.wild)) throw Error('wild allele not in alleles ' + locus.id);
       if (!LOCUS_KINDS.has(locus.kind)) throw Error('invalid locus kind ' + locus.id);
       if (locus.expressedIn !== undefined && !['male', 'female'].includes(locus.expressedIn)) throw Error('invalid expressedIn ' + locus.id);
+      if (locus.codominant && (locus.kind === 'additive' || locusEffects(locus).some(e => e.genotypes))) throw Error('codominant needs a values locus ' + locus.id);
       if (locus.polygenic && (locus.kind !== 'additive' || locus.alleles.length !== 2)) throw Error('polygenic locus must be a two-allele additive locus ' + locus.id);
       if (locus.carrierFrequency !== undefined && (locus.kind !== 'deleterious' || locus.alleles.length !== 2 || !(locus.carrierFrequency >= 0 && locus.carrierFrequency <= 0.5))) {
         throw Error('carrierFrequency needs a two-allele deleterious locus and a value in [0, 0.5] ' + locus.id);
@@ -509,6 +571,10 @@ export function validateSpecies(species) {
       if (!traits[name]) throw Error('epistasis: unknown trait in set');
       checkTraitValue(traits[name], value, 'epistasis.set');
     }
+    for (const [name, table] of Object.entries(rule.map ?? {})) {
+      if (!traits[name] || traits[name].type !== 'enum') throw Error('epistasis: map needs an enum trait');
+      for (const [from, to] of Object.entries(table)) { checkTraitValue(traits[name], from, 'epistasis.map'); checkTraitValue(traits[name], to, 'epistasis.map'); }
+    }
   }
   validated.add(species);
   return true;
@@ -536,6 +602,26 @@ export function findLocus(species, locusId) {
   const index = species.xChromosome?.loci.findIndex(l => l.id === locusId) ?? -1;
   if (index !== -1) return { chromosome: species.xChromosome, index, locus: species.xChromosome.loci[index], xLinked: true };
   return null;
+}
+
+/**
+ * Strongest expression in females of a trait value (or of any value when `value` is omitted) across
+ * the loci that make it: 0 = only males show it, 1 = females show it fully. For breeder UIs.
+ */
+export function femaleExpression(species, trait, value) {
+  let best = 0;
+  const loci = [...species.chromosomes.flatMap(c => c.loci), ...(species.xChromosome?.loci ?? []), ...Object.values(species.sexLoci ?? {})];
+  for (const locus of loci) {
+    for (const e of locusEffects(locus)) {
+      if (e.trait !== trait) continue;
+      const vals = e.genotypes ? Object.values(e.genotypes) : e.values ? Object.values(e.values) : [];
+      if (value !== undefined && !vals.includes(value)) continue;
+      if (value === undefined && !vals.some(v => v !== null && v !== species.traits[trait].default)) continue;
+      const k = e.female ?? ((e.expressedIn ?? locus.expressedIn) === 'male' ? 0 : 1);
+      best = Math.max(best, k);
+    }
+  }
+  return best;
 }
 
 export function yLocus(species) {
