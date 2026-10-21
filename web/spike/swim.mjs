@@ -5,6 +5,7 @@
 import { rngFromSeed } from '../../core/rng.mjs';
 
 export const TANK = { x: [-5.8, 5.8], y: [-2.3, 2.6], z: [-3.6, 1.0] };
+const TANK_DEFAULT = TANK;
 const STEP = 1 / 60;
 
 const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
@@ -12,8 +13,8 @@ const wrapAngle = a => Math.atan2(Math.sin(a), Math.cos(a));
 
 // Each fish wanders around its own home area and now and then makes a long trip across the tank,
 // so the school spreads over the whole tank instead of piling up in the middle.
-function pick(rng, sw) {
-  const [x0, x1] = TANK.x, [y0, y1] = TANK.y, [z0, z1] = TANK.z;
+function pick(rng, sw, B = TANK) {
+  const [x0, x1] = B.x, [y0, y1] = B.y, [z0, z1] = B.z;
   if (rng() < 0.2) return [x0 + 0.6 + rng() * (x1 - x0 - 1.2), y0 + 0.5 + rng() * (y1 - y0 - 1.0), z0 + 0.4 + rng() * (z1 - z0 - 0.8)];
   const h = sw.home;
   return [clamp(h[0] + (rng() - 0.5) * 4.2, x0 + 0.6, x1 - 0.6), clamp(h[1] + (rng() - 0.5) * 1.4, y0 + 0.4, y1 - 0.4), clamp(h[2] + (rng() - 0.5) * 2.0, z0 + 0.4, z1 - 0.4)];
@@ -21,7 +22,9 @@ function pick(rng, sw) {
 
 const gcd = (a, b) => (b ? gcd(b, a % b) : a);
 
-export function createSchool(fishes, seed) {
+/** `bounds` (default the whole tank) is the box the fish keep to, e.g. a smaller one for a close preview. */
+export function createSchool(fishes, seed, bounds = TANK) {
+  const TANK = bounds;
   const n = fishes.length;
   const stride = [7, 5, 11, 13, 17].find(s => gcd(s, n) === 1) ?? 1;
   const swimmers = fishes.map((f, i) => {
@@ -36,14 +39,15 @@ export function createSchool(fishes, seed) {
       fish: f, rng, pos, home, yaw: rng() < 0.5 ? 0 : Math.PI, pitch: 0, speed: 0.2, yawRate: 0,
       phase: rng() * 6.28, effort: 0.5, target: null, retargetAt: 0, hoverUntil: 0, cruise: 0.38 + rng() * 0.18,
     };
-    sw.target = pick(rng, sw);
+    sw.target = pick(rng, sw, bounds);
     return sw;
   });
-  return { swimmers, time: 0, focus: -1 };
+  return { swimmers, time: 0, focus: -1, bounds };
 }
 
 function stepOne(school, sw, t) {
   const { rng } = sw;
+  const TANK = school.bounds ?? TANK_DEFAULT;
   const Lb = sw.fish.look.length;
   const focused = school.focus === sw.fish.index;
   if (focused) {
@@ -54,7 +58,7 @@ function stepOne(school, sw, t) {
     else if (!goRight && sw.pos[0] < -2.6) sw.focusTarget = [3, 0.2, -0.4];
     sw.target = sw.focusTarget;
   } else if ((sw.focusTarget && !(sw.focusTarget = null)) || t >= sw.retargetAt || Math.hypot(sw.target[0] - sw.pos[0], sw.target[2] - sw.pos[2]) < 0.5) {
-    sw.target = pick(rng, sw);
+    sw.target = pick(rng, sw, TANK);
     sw.retargetAt = t + 5 + rng() * 7;
     if (rng() < 0.3) sw.hoverUntil = t + 1.2 + rng() * 2.2;
   }

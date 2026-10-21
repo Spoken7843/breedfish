@@ -73,6 +73,8 @@ const quickMode = () => game === 'quick';
 const species = SPECIES.guppy;
 const LH = species.lifeHistory;
 const FOV = (30 * Math.PI) / 180, BASE_DIST = 13.4;
+// the "Isso existe?" preview: a few fish in a smaller box, seen from closer
+const PREVIEW_TANK = { x: [-3.2, 3.2], y: [-1.5, 1.9], z: [-2.0, 0.8] }, PREVIEW_DIST = 8.6;
 
 // ---------- GL setup ----------
 const canvas = $('stage');
@@ -371,7 +373,7 @@ function loadTank() {
   });
   if (state.mode === 'plantel') state.focus = state.focusId ? fishes.findIndex(f => f.fish.id === state.focusId) : -1;
   if (state.focus >= fishes.length) state.focus = -1;
-  school = createSchool(fishes, state.seed);
+  school = createSchool(fishes, state.seed, state.preview ? PREVIEW_TANK : undefined);
   school.focus = state.focus;
   state.time = 0;
   renderList();
@@ -403,7 +405,7 @@ function updateCamera(dt) {
     const side = [Math.sin(sw.yaw), Math.cos(sw.yaw)];
     const sgn = side[0] * (camera.eye[0] - at[0]) + side[1] * (camera.eye[2] - at[2]) >= 0 ? 1 : -1;
     eye = [at[0] + side[0] * sgn * dist, at[1] + 0.12, at[2] + side[1] * sgn * dist];
-  } else { eye = [0, 0.1, BASE_DIST]; at = [0, 0.1, 0]; }
+  } else { eye = [0, 0.1, state.preview ? PREVIEW_DIST : BASE_DIST]; at = [0, 0.1, 0]; }
   const k = dt === null ? 1 : 1 - Math.exp(-dt * 2.5);
   for (let i = 0; i < 3; i++) { camera.eye[i] += (eye[i] - camera.eye[i]) * k; camera.at[i] += (at[i] - camera.at[i]) * k; }
 }
@@ -465,7 +467,7 @@ function drawFins(f, fr, viewProj) {
 
 function render(t, dt) {
   resize();
-  advance(school, t, () => { const s = createSchool(fishes, state.seed); s.focus = state.focus; return s; });
+  advance(school, t, () => { const s = createSchool(fishes, state.seed, state.preview ? PREVIEW_TANK : undefined); s.focus = state.focus; return s; });
   school.focus = state.focus;
   updateCamera(dt);
   const aspect = canvas.width / canvas.height;
@@ -1124,7 +1126,7 @@ function renderPick() {
     applyThumb($('pick-thumb'), f.p, f.look);
     $('pick-name').textContent = `${f.p.observedSex === 'male' ? '♂' : '♀'} ${f.name}`;
     $('pick-meta').textContent = `Prévia do "Isso existe?" — ${varietySummary(f.p)}`;
-    btn('Fechar prévia', closePreview, 'ghost');
+    btn('Fechar prévia', () => { exist.auto = false; closePreview(); }, 'ghost');
   } else if (state.mode === 'catalog') {
     const i = f.index, isMale = f.p.observedSex === 'male';
     applyThumb($('pick-thumb'), f.p, f.look);
@@ -1437,7 +1439,7 @@ function renderFilters() {
 // ---------- "Isso existe?": pick visible traits, the genetics says if one fish can show them all ----------
 const EXIST_ORDER = ['tailShape', 'kohaku', 'snakeskin', 'bodyPattern', 'fullRed', 'zebrinus', 'metalGold', 'micariff', 'purpleBody', 'pink', 'glassBelly',
   'bodyBase', 'albino', 'redEye', 'lutino', 'noOrange', 'blau', 'tuxedo', 'tailColor', 'tailPattern', 'tailBorder', 'bigEar'];
-const exist = { sex: 'any', picks: {} };   // trait -> Set of values
+const exist = { sex: 'any', picks: {}, auto: true };   // trait -> Set of values; auto: the preview swims as soon as it exists
 const HAP = { snakeskin: 'snakeskin (corpo e cauda)', cobra: 'snakeskin (corpo e cauda)', lace: 'lace (snakeskin só na cauda)', galaxy: 'galaxy (platinum + snakeskin)',
   fullRed: 'full red', moscow: 'Moscow', moscowBlack: 'Moscow preto', japanBlue: 'Japan blue', coral: 'coral', platinum: 'platinum', dragon: 'dragon', panda: 'panda',
   neonBlue: 'neon blue', doubleSword: 'double sword', topSword: 'top sword', bottomSword: 'bottom sword', redTail: 'cauda vermelha', blueTail: 'cauda azul',
@@ -1570,10 +1572,21 @@ function renderExistResult() {
     for (const text of why) out.push(el('p', { className: 'hint', textContent: text }));
     lastExist = ok.length ? { r, want } : null;
     if (ok.length) {
-      const view = el('button', { type: 'button', className: state.preview ? 'ghost small' : 'primary small', textContent: state.preview ? 'Fechar prévia' : `Ver ${ok.length === 2 ? 'macho e fêmea' : SEXNAME[ok[0]]} nadando` });
-      view.addEventListener('click', () => (state.preview ? closePreview() : openPreview()));
+      // the fish itself: a photo of each possible sex here, and the same fish swimming in the aquarium
+      const photos = el('div', { className: 'exist-photos' });
+      for (const sx of ok) {
+        const fish = exampleFish(species, r.bySex[sx].example, sx, { id: `preview-${sx}-11`, seed: 11 });
+        const p = phenotype(species, fish, { ageDays: 365 });
+        const img = thumbImg(p);
+        img.title = 'Mostrar no aquário';
+        img.addEventListener('click', () => { if (!state.preview) { exist.auto = true; openPreview(); } setPick(fish.id); });
+        photos.append(el('figure', {}, img, el('figcaption', { textContent: `${sx === 'male' ? '♂' : '♀'} ${hobbyName(p)}` })));
+      }
+      out.push(photos);
+      if (exist.auto) openPreview(!!state.preview);
+      const view = el('button', { type: 'button', className: 'ghost small', textContent: state.preview ? 'Tirar do aquário' : 'Ver nadando no aquário' });
+      view.addEventListener('click', () => { if (state.preview) { exist.auto = false; closePreview(); } else { exist.auto = true; openPreview(); } });
       out.push(view);
-      if (state.preview) openPreview(true);
     }
     const how = ok.length ? r.bySex[ok[0]] : null;
     if (how) {
@@ -1805,7 +1818,7 @@ if (SOFTWARE_GL) {
 // banner on the aquarium while the "Isso existe?" preview swims
 const previewTag = el('div', { id: 'preview-tag', className: 'preview-tag', hidden: true },
   el('span', { textContent: 'Prévia: o peixe que você montou' }));
-{ const close = el('button', { type: 'button', className: 'ghost small', textContent: 'Fechar' }); close.addEventListener('click', () => closePreview()); previewTag.append(close); }
+{ const close = el('button', { type: 'button', className: 'ghost small', textContent: 'Fechar' }); close.addEventListener('click', () => { exist.auto = false; closePreview(); }); previewTag.append(close); }
 stageBox.append(previewTag);
 $('exist-sex').addEventListener('change', e => { exist.sex = e.target.value; scheduleExist(); });
 $('exist-clear').addEventListener('click', () => { exist.picks = {}; renderExistPicker(); scheduleExist(); });
