@@ -1,0 +1,268 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Plantel · Guppy em óleo</title>
+<meta name="description" content="Simulador de criação de guppy: genética real, 46 variedades, aquários e lago, seleção em lote e troca de peixes por código.">
+<meta property="og:title" content="Plantel · Guppy em óleo">
+<meta property="og:description" content="Crie guppies com genética real: cruze, separe, selecione e fixe linhagens. Mande seus peixes por código.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cpath d='M8 32c10-14 30-14 40 0-10 14-30 14-40 0z' fill='%23d2bf8e'/%3E%3Cpath d='M46 32l14-12v24z' fill='%234a7fd0'/%3E%3C/svg%3E">
+</head>
+<body>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+  /* Layout: aquarium canvas on the left, breeder's notebook panel on the right; stacks at tablet width. Single dark "tank at night" look by choice. */
+  :root {
+    --bg: #091211; --bg-glow: #223a31; --panel: #14231f; --panel-2: #101d1a;
+    --ink: #e4decf; --ink-soft: #a6b09e; --ink-dim: #8fa196; --line: #314642; --line-strong: #506457;
+    --gold: #d2bf8e; --gold-ink: #182b23; --label: #b09b71; --field: #132b28; --field-line: #476059;
+    --serif: Georgia, 'Times New Roman', serif; --sans: system-ui, -apple-system, 'Segoe UI', sans-serif;
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  body { background: var(--bg); background-image: radial-gradient(ellipse at 15% 0%, var(--bg-glow) 0, transparent 56%); color: var(--ink); font-family: var(--serif); }
+  .shell { max-width: 1600px; margin: 0 auto; padding-block: 22px 28px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+  .topbar { display: flex; justify-content: space-between; align-items: end; flex-wrap: wrap; gap: 8px 16px; padding-bottom: 16px; margin-bottom: 18px; border-bottom: 1px solid var(--line); }
+  .eyebrow { font: 600 10px/1.5 var(--sans); letter-spacing: 2.6px; color: var(--label); text-transform: uppercase; }
+  h1 { font-size: 23px; font-weight: 500; letter-spacing: 2.2px; margin: 4px 0 0; text-wrap: balance; }
+  .mark { color: var(--label); }
+  .tag { font: 11px var(--sans); color: var(--ink-dim); letter-spacing: 0.6px; }
+  .workspace { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 20px; align-items: start; }
+  .stage-wrap { position: relative; border: 1px solid var(--line-strong); background: var(--panel-2); min-width: 0; }
+  #stage { display: block; width: 100%; max-width: 100%; aspect-ratio: 16 / 9; }
+  .hud { position: absolute; left: 12px; right: 12px; bottom: 10px; display: flex; justify-content: space-between; gap: 8px; font: 10px var(--sans); letter-spacing: 1.2px; color: var(--ink); opacity: 0.8; pointer-events: none; font-variant-numeric: tabular-nums; }
+  .hud b { font-weight: 600; }
+  .error { position: absolute; inset: 0; display: grid; place-items: center; padding: 24px; text-align: center; background: var(--panel-2); font: 14px/1.6 var(--sans); white-space: pre-wrap; overflow: auto; }
+  .panel { background: linear-gradient(140deg, var(--panel), var(--panel-2)); border: 1px solid var(--line); padding: 18px 16px; font-family: var(--sans); display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+  .hint { font-size: 12px; line-height: 1.6; color: var(--ink-soft); margin: 0; }
+  label { display: flex; flex-direction: column; gap: 6px; font-size: 11px; color: var(--ink-dim); letter-spacing: 0.4px; }
+  label.check { flex-direction: row; align-items: center; font-size: 12px; color: var(--ink); }
+  .row { display: flex; gap: 10px; align-items: end; flex-wrap: wrap; }
+  .row label { flex: 1; min-width: 120px; }
+  input[type=number], select { font: 13px var(--sans); background: var(--field); color: var(--ink); border: 1px solid var(--field-line); padding: 9px 10px; border-radius: 2px; }
+  input[type=range], input[type=checkbox] { accent-color: var(--gold); }
+  button { border: 1px solid var(--gold); background: transparent; color: var(--gold); font: 600 10.5px var(--sans); letter-spacing: 1px; padding: 10px 12px; cursor: pointer; text-transform: uppercase; border-radius: 2px; }
+  button:hover { background: color-mix(in srgb, var(--gold) 12%, transparent); }
+  button.primary { background: var(--gold); color: var(--gold-ink); }
+  :focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+  .hint.warn { color: var(--gold); border-left: 2px solid var(--gold); padding-left: 10px; }
+  .fish-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+  .fish-list li { border: 1px solid var(--line); padding: 10px 12px; }
+  .fish-list li.active { border-color: var(--gold); }
+  .fish-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+  .fish-head strong { font: 500 15px var(--serif); }
+  .fish-head button { padding: 6px 9px; }
+  .fish-list p { margin: 6px 0 0; font-size: 11px; line-height: 1.55; color: var(--ink-soft); }
+  .tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .tabs button[aria-pressed="true"] { background: var(--gold); color: var(--gold-ink); }
+  .pager { align-items: center; justify-content: space-between; flex-wrap: nowrap; }
+  .pager .hint { flex: 1; text-align: center; }
+  .stack { display: flex; flex-direction: column; gap: 10px; }
+  .fish-list { max-height: 560px; overflow-y: auto; }
+  .fish-list p.note { color: var(--ink-dim); font-size: 10.5px; }
+  .breed { display: flex; flex-direction: column; gap: 8px; border: 1px solid var(--line); padding: 10px 12px; }
+  .breed .pair { margin: 0; font: 500 14px var(--serif); }
+  .parent { display: grid; grid-template-columns: 56px minmax(0, 1fr); gap: 4px 8px; align-items: center; font-size: 11px; color: var(--ink-dim); }
+  .parent strong { font-weight: 500; color: var(--ink); font-size: 12px; }
+  .parent select { grid-column: 2; min-width: 0; }
+  .fish-list button.use { margin-top: 8px; padding: 6px 9px; }
+  .fish-list button.use:disabled { opacity: 0.6; cursor: default; }
+  [hidden] { display: none !important; }
+  .hint.event { color: var(--ink); border-left: 2px solid var(--gold); padding-left: 10px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chips:empty { display: none; }
+  .chip { padding: 5px 8px; text-transform: none; letter-spacing: 0.2px; font-weight: 500; font-size: 11px; }
+  .fish-id { font: 11px var(--sans); color: var(--ink-dim); }
+  .fish-list p.meta-line { color: var(--gold); font-size: 10.5px; font-variant-numeric: tabular-nums; }
+  .fish-list p.carrier { color: var(--gold); }
+  .fish-list p.carrier.soft { color: var(--ink-soft); }
+  .fish-list p.lab { font-family: ui-monospace, monospace; font-size: 10px; color: var(--ink-dim); overflow-wrap: anywhere; }
+  .fish-list li.parent-pick { border-left: 3px solid var(--gold); }
+  .fish-list li.empty { color: var(--ink-soft); font-size: 12px; }
+  .card-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+  button.ghost { border-color: var(--field-line); color: var(--ink-soft); }
+  button:disabled { opacity: 0.5; cursor: default; }
+  #goal-add, #sort, .row select { width: 100%; min-width: 0; }
+  .tank-tabs { display: flex; flex-wrap: wrap; gap: 6px; }
+  .tank-tabs button { padding: 6px 8px; text-transform: none; letter-spacing: 0.2px; font-size: 11px; font-variant-numeric: tabular-nums; }
+  .tank-tabs button[aria-pressed="true"] { background: var(--gold); color: var(--gold-ink); }
+  .tank-tabs button.over { border-color: #d98b6a; color: #f0b9a0; }
+  .tank-tabs button.over[aria-pressed="true"] { background: #d98b6a; color: var(--gold-ink); }
+  .alerts { display: flex; flex-direction: column; gap: 6px; }
+  .alerts:empty { display: none; }
+  .fish-list p.status { color: var(--ink); }
+  .father { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+  .father p { flex: 1 1 100%; }
+  .father button { margin-top: 0; padding: 5px 8px; }
+  select.move { padding: 5px 6px; font-size: 11px; margin-top: 8px; max-width: 120px; }
+  #move-all { width: 100%; min-width: 0; }
+  .guide { border: 1px solid var(--line); padding: 8px 10px; font-size: 11.5px; color: var(--ink-soft); }
+  .guide summary { cursor: pointer; color: var(--gold); font-weight: 600; letter-spacing: 0.4px; }
+  .guide .steps { margin: 8px 0 4px; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; line-height: 1.5; }
+  .challenges { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 4px; line-height: 1.45; }
+  .challenges li { color: var(--ink-soft); }
+  .challenges li b { color: var(--ink); font-weight: 600; }
+  .challenges li.done b { color: var(--gold); }
+  .import { display: flex; flex-direction: column; gap: 6px; }
+  .import textarea { font: 11px ui-monospace, monospace; background: var(--field); color: var(--ink); border: 1px solid var(--field-line); padding: 6px; border-radius: 2px; resize: vertical; width: 100%; }
+  .planner { color: var(--ink); }
+  .tank-settings { display: flex; flex-direction: column; gap: 6px; }
+  .tank-settings[hidden], #pond-stock[hidden], .stats[hidden], .planner[hidden] { display: none; }
+  #pond-stock select, .tank-settings select { width: 100%; }
+  .stats { display: flex; flex-direction: column; gap: 4px; border-top: 1px solid var(--line); padding-top: 8px; }
+  .stat-row { display: grid; grid-template-columns: 62px 1fr 1fr; gap: 6px; align-items: end; font-size: 10.5px; color: var(--ink-soft); }
+  .stat-row.head { color: var(--ink-dim); }
+  .stat-cell { display: flex; align-items: end; gap: 6px; }
+  .stat-cell b { font-weight: 500; font-variant-numeric: tabular-nums; }
+  .hist { display: inline-flex; align-items: end; gap: 1px; height: 18px; width: 52px; }
+  .hist i { display: block; flex: 1; background: var(--gold); min-height: 1px; opacity: 0.85; }
+  .selection { display: flex; flex-direction: column; gap: 8px; border: 1px solid var(--line); padding: 8px 10px; }
+  .fish-list p.measures { color: var(--gold); font-variant-numeric: tabular-nums; }
+  .pedigree { font-size: 11px; color: var(--ink-soft); margin-top: 6px; }
+  .pedigree summary { cursor: pointer; color: var(--label); }
+  .pedigree ul { margin: 4px 0 0 0; padding-left: 14px; list-style: none; }
+  button.link { border: 0; padding: 0; background: none; color: var(--gold); text-transform: none; letter-spacing: 0; font: inherit; text-decoration: underline; cursor: pointer; }
+  button.small { padding: 5px 8px; }
+  @media (max-width: 1000px) { .workspace { grid-template-columns: minmax(0, 1fr); } }
+  @media (max-width: 560px) { h1 { font-size: 19px; } }
+  button.big { padding: 14px 12px; font-size: 12px; }
+  .row.time button { flex: 1; }
+  .more-box { border-top: 1px solid var(--line); padding-top: 8px; display: flex; flex-direction: column; gap: 8px; }
+  .more-box > summary { cursor: pointer; color: var(--gold); font-weight: 600; font-size: 11.5px; letter-spacing: 0.4px; }
+  .more-box[open] { gap: 8px; }
+  .more-box > *:not(summary) { margin-top: 8px; }
+  .more-box select, .more-box textarea { width: 100%; min-width: 0; }
+  .fish-list details.card-more > summary { cursor: pointer; color: var(--gold); font-size: 11px; margin-top: 6px; }
+  .guide.new > summary { color: var(--gold-ink); background: var(--gold); padding: 6px 8px; margin: -8px -10px; }
+</style>
+<div class="shell">
+  <header class="topbar">
+    <div>
+      <div class="eyebrow">Protótipo visual · WebGL2</div>
+      <h1>PLANTEL <span class="mark">/</span> GUPPY EM ÓLEO</h1>
+    </div>
+    <span class="tag">Simulador de criação de guppy · genética real, seleção e lago</span>
+  </header>
+  <main class="workspace">
+    <section class="stage-wrap">
+      <canvas id="stage" aria-label="Aquário com cinco guppies desenhados a partir dos genomas"></canvas>
+      <div class="hud"><span id="fps">— FPS</span><span id="gpu"></span></div>
+      <div id="error" class="error" hidden></div>
+    </section>
+    <aside class="panel">
+      <div class="tabs" role="group" aria-label="Aquário">
+        <button id="mode-catalog" type="button" aria-pressed="true">Variedades</button>
+        <button id="mode-cross" type="button" aria-pressed="false">Plantel</button>
+      </div>
+      <p id="event" class="hint event" hidden></p>
+      <details id="guide" class="guide">
+        <summary>Como jogar · desafios <b id="challenges-count"></b></summary>
+        <ol class="steps">
+          <li><b>Variedades</b>: escolha peixes e toque em "Comprar".</li>
+          <li><b>Plantel</b>: com mãe e pai escolhidos, toque em <b>Cruzar</b>. O tempo anda em semanas.</li>
+          <li>Quando aparecer o aviso, toque em <b>Separar por sexo</b>, ou irmãos cruzam sozinhos.</li>
+          <li>Em cada peixe, <b>Detalhes</b> mostra medidas, pedigree, código para mandar a alguém e descarte.</li>
+          <li>Para criar de verdade: <b>Filtrar e ordenar</b> e <b>Seleção em lote</b>. No Lago tudo vira colônia.</li>
+        </ol>
+        <ul id="challenges" class="challenges"></ul>
+      </details>
+      <div id="catalog-controls" class="row pager">
+        <button id="prev" type="button" aria-label="Variedades anteriores">‹</button>
+        <span id="page-label" class="hint"></span>
+        <button id="next" type="button" aria-label="Próximas variedades">›</button>
+      </div>
+      <div id="cross-controls" class="breed">
+        <div class="parent"><span>♀ Mãe</span><strong id="mom-name"></strong></div>
+        <div class="parent"><span>♂ Pai</span><strong id="dad-name"></strong></div>
+        <button id="cross" class="primary big" type="button">Cruzar</button>
+        <div class="row time">
+          <button id="week" type="button">+1 semana</button>
+          <button id="wait" type="button">+4 semanas</button>
+        </div>
+        <p id="cross-hint" class="hint"></p>
+        <details class="more-box">
+          <summary>Previsão, compra e opções</summary>
+          <p id="planner" class="hint planner" hidden></p>
+          <select id="mom" aria-label="Comprar uma fundadora de linhagem"></select>
+          <select id="dad" aria-label="Comprar um fundador de linhagem"></select>
+          <label class="check" for="maternity"><input id="maternity" type="checkbox"> Caixa-maternidade: filhotes nascem no berçário</label>
+        </details>
+      </div>
+      <div id="tank-controls" class="breed">
+        <p id="tank-status" class="hint"></p>
+        <div id="tank-tabs" class="tank-tabs" role="group" aria-label="Aquários"></div>
+        <div id="alerts" class="alerts"></div>
+        <button id="separate" type="button" hidden>Separar por sexo</button>
+        <div id="tank-settings" class="tank-settings" hidden>
+          <div class="row">
+            <label for="tank-temp">Temperatura <select id="tank-temp"></select></label>
+            <label for="tank-food">Comida <select id="tank-food"><option value="pouca">Pouca</option><option value="normal">Normal</option><option value="farta">Farta</option></select></label>
+          </div>
+          <p id="tank-info" class="hint"></p>
+        </div>
+        <div id="pond-stock" hidden><select id="stock-strain" aria-label="Povoar o lago"></select></div>
+        <details class="more-box">
+          <summary id="filter-sum">Filtrar e ordenar</summary>
+          <select id="goal-add" aria-label="Adicionar característica à meta"></select>
+          <div id="goal-chips" class="chips"></div>
+          <div class="row">
+            <label for="f-sex">Sexo <select id="f-sex"><option value="">Todos</option><option value="male">Machos</option><option value="female">Fêmeas</option></select></label>
+            <label for="f-age">Idade <select id="f-age"><option value="">Todas</option><option value="adulto">Adultos</option><option value="young">Alevinos e jovens</option><option value="idoso">Idosos</option></select></label>
+          </div>
+          <label for="sort">Ordem <select id="sort"><option value="new">Mais novos</option><option value="old">Mais velhos</option><option value="goal">Mais da meta</option><option value="chars">Mais características</option><option value="q:tailSize">Maior cauda</option><option value="q:tailSpread">Mais abertura</option><option value="q:dorsalSize">Maior dorsal</option><option value="q:colorCoverage">Mais cor</option><option value="q:bodySize">Maior porte</option><option value="random">Amostra aleatória</option></select></label>
+          <button id="resample" type="button" class="ghost small">Outra amostra</button>
+          <label class="check" for="only-goal"><input id="only-goal" type="checkbox"> Só quem tem a meta toda</label>
+          <p id="list-count" class="hint"></p>
+        </details>
+        <details class="more-box">
+          <summary id="sel-sum">Seleção em lote</summary>
+          <div id="batch-stats" class="stats" hidden></div>
+          <div class="row">
+            <label for="sel-by">Critério <select id="sel-by"></select></label>
+            <label for="sel-scope">Quem entra <select id="sel-scope"><option value="adult">Adultos</option><option value="male">Machos adultos</option><option value="female">Fêmeas adultas</option><option value="all">Todos com sexo visível</option></select></label>
+          </div>
+          <div class="row">
+            <label for="sel-keep">Ficam <select id="sel-keep"><option value="0.1">10% melhores</option><option value="0.2">20% melhores</option><option value="0.3">30% melhores</option><option value="0.5">50% melhores</option></select></label>
+            <label for="sel-action">O resto <select id="sel-action"></select></label>
+          </div>
+          <p id="sel-preview" class="hint"></p>
+          <button id="sel-apply" type="button">Fazer a rodada de seleção</button>
+        </details>
+        <details class="more-box">
+          <summary>Ferramentas</summary>
+          <select id="move-all" aria-label="Mover os peixes da lista"></select>
+          <button id="cull-rest" type="button" hidden>Descartar</button>
+          <div class="import">
+            <label for="import-code">Importar peixe (cole o código de alguém) <textarea id="import-code" rows="2" spellcheck="false" placeholder="PL1...."></textarea></label>
+            <button id="import-btn" type="button">Importar peixe</button>
+          </div>
+          <button id="reset" type="button" class="ghost">Recomeçar plantel</button>
+          <label class="check" for="lab"><input id="lab" type="checkbox"> Laboratório (dev): mostrar genótipo</label>
+        </details>
+      </div>
+      <ul id="fish-list" class="fish-list"></ul>
+      <button id="more" type="button" hidden>Mostrar mais</button>
+      <details class="more-box">
+        <summary>Pintura e desempenho</summary>
+        <label class="check" for="oil"><input id="oil" type="checkbox"> Filtro de óleo</label>
+        <label for="radius">Tamanho do pincel <input id="radius" type="range" min="2" max="8" step="1"></label>
+        <label for="texture">Textura (pinceladas, empaste, tela) <input id="texture" type="range" min="0" max="1" step="0.05"></label>
+        <label for="res">Resolução do filtro
+          <select id="res"><option value="0.5">50% (leve, pincel largo)</option><option value="0.75">75%</option><option value="1">100% (pesado, mais nítido)</option></select>
+        </label>
+        <p class="hint">Abaixo de 40 FPS a qualidade cai sozinha até você mexer nos controles. Estilo <b id="art"></b>.</p>
+        <div class="row">
+          <button id="pause" type="button">Pausar</button>
+          <button id="capture" type="button" hidden>Capturar PNG</button>
+        </div>
+      </details>
+      <p id="gpu-note" class="hint warn" hidden></p>
+      <p class="hint">O plantel fica salvo neste navegador.</p>
+    </aside>
+  </main>
+</div>
+<script type="module" src="web/spike/main.mjs"></script>
+
+</body>
+</html>
