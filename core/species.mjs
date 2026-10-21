@@ -312,6 +312,9 @@ export const SPECIES = {
       // half-moon: a delta opened to ~180 degrees (spread 0.75 of the 0-1 measure here, TBD)
       { when: [{ trait: 'tailShape', equals: 'delta' }, { trait: 'tailSpread', atLeast: 0.75 }], set: { tailShape: 'halfMoon' } },
     ],
+    // what a show line looks like where a breeder does not care (previews of built fish): delta tail,
+    // no wild spots, no tail border
+    showBackground: { Cau: ['Dl', 'Dl'], Pat: ['p', 'p'], Bord: ['b', 'b'] },
     phenotypeModel: 'varieties_v5'
   },
   medaka: {

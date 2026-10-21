@@ -10,8 +10,8 @@
 import { femaleExpression, SPECIES } from '../../core/species.mjs';
 import { phenotype } from '../../core/engine.mjs';
 import { hashString } from '../../core/rng.mjs';
-import { GUPPY_STRAINS, strainFounder, strainX, Y_ONLY_PATTERNS } from '../../core/strains.mjs';
-import { canExist, exampleFish } from '../../core/possible.mjs';
+import { GUPPY_STRAINS, strainFounder, strainQuant, strainX, Y_ONLY_PATTERNS } from '../../core/strains.mjs';
+import { canExist, founderFor } from '../../core/possible.mjs';
 import { fertility, lifeStage, sexOf } from '../../core/lifehistory.mjs';
 import { addFish, advance as advanceWeeks, ageOf, breedAndWait, canMate, coi, createTank, cull, findAlive, gestationDays, knownParents, lengthMm,
   loadTank as loadTankSave, moveFish, nurseryOf, paternityTest, prune, QUICK_TANKS, quickCross, saveTank, setTank, tankById, tankLoad, WEEK } from '../../core/tank.mjs';
@@ -937,7 +937,7 @@ function renderChallenges() {
 function infoLine(e) {
   const { fish } = e, fry = e.stage === 'alevino';
   const r = tank.registry[fish.id];
-  const origin = fish.origin === 'external' ? 'importado' : (fish.generation ?? 0) === 0 ? 'fundador' : genLabel(fish.generation);
+  const origin = fish.origin === 'external' ? 'importado' : fish.origin === 'custom' ? 'montado (Isso existe?)' : (fish.generation ?? 0) === 0 ? 'fundador' : genLabel(fish.generation);
   if (quickMode()) {
     const parents = r?.parents && r.motherKnown !== false ? ` · de ${r.parents[0]} × ${r.parents[1]}` : '';
     return `${origin}${parents}`;
@@ -1476,6 +1476,47 @@ function scheduleExist() {
   if (Object.keys(exist.picks).length) existTimer = setTimeout(renderExistResult, 120);
 }
 
+/**
+ * The fish the breeder built, as a dealer would sell it: the genotype the checker found, its own hidden
+ * load and line polygenes (core/possible.mjs founderFor). n picks one of a few siblings; the photo, the
+ * preview, the purchase and the code are all the same fish.
+ */
+function builtFish(sx, n = 0, id = `preview-${sx}-${n}`) {
+  const { r, want } = lastExist;
+  const seed = hashString(`${JSON.stringify(want)}|${sx}|${n}`);
+  return founderFor(species, r.bySex[sx].example, sx, want, { id, seed, profile: strainQuant({ id: 'custom' }) });
+}
+
+/** Buy the built fish into the current game and make it the father or mother of the pair. */
+function buyBuilt(sx) {
+  let k = 1;
+  while (tank.registry[`MTD-${k}`]) k++;
+  const fish = builtFish(sx, 0, `MTD-${k}`);
+  fish.origin = 'custom';
+  addFish(species, tank, fish, FOUNDER_AGE, quickMode() ? QUICK_TANKS[0].id : undefined);
+  setParent(fish);
+  const p = phenotype(species, fish, { ageDays: FOUNDER_AGE });
+  lastEvent = `${fish.id} (${hobbyName(p)}) entrou no plantel e é ${sx === 'male' ? 'o pai' : 'a mãe'} do casal. Como todo peixe comprado, pode trazer recessivos escondidos.`;
+  eventDetail = null;
+  state.mode = 'plantel';
+  persist(); refresh();
+}
+
+/** Copy (or show) the code of the built fish: whoever imports it gets exactly this fish. */
+async function saveBuiltCode(sx, box) {
+  const fish = builtFish(sx, 0);
+  const code = packFish(fish);
+  const name = hobbyName(phenotype(species, fish, { ageDays: 365 }));
+  $('import-code').value = code;
+  let copied = false;
+  try { await navigator.clipboard.writeText(code); copied = true; } catch { /* no clipboard here: the field below has it */ }
+  const area = el('textarea', { className: 'exist-code', rows: 2, readOnly: true, spellcheck: false, value: code });
+  const file = el('a', { className: 'exist-dl', textContent: 'Baixar .txt', download: `plantel-${name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}.txt`,
+    href: URL.createObjectURL(new Blob([`${name} (${sx === 'male' ? 'macho' : 'fêmea'})\n${code}\n`], { type: 'text/plain' })) });
+  box.replaceChildren(el('p', { className: 'hint', textContent: copied ? 'Código copiado. Também está aqui e em "Importar peixe":' : 'Copie o código abaixo (também está em "Importar peixe"):' }), area, file);
+  area.focus(); area.select();
+}
+
 // Preview: the fish being built swim in the aquarium (two of each possible sex, different developmental
 // noise), until the breeder closes it or does something else.
 let lastExist = null;
@@ -1483,10 +1524,9 @@ function openPreview(refreshOnly = false) {
   if (!lastExist) { if (state.preview) closePreview(); return; }
   const members = [];
   for (const sx of ['male', 'female']) {
-    const res = lastExist.r.bySex[sx];
-    if (!res?.ok) continue;
-    for (const seed of [11, 23]) {
-      const fish = exampleFish(species, res.example, sx, { id: `preview-${sx}-${seed}`, seed });
+    if (!lastExist.r.bySex[sx]?.ok) continue;
+    for (const n of [0, 1]) {
+      const fish = builtFish(sx, n);
       const p = phenotype(species, fish, { ageDays: 365 });
       members.push({ fish, p, name: hobbyName(p) });
     }
@@ -1575,12 +1615,18 @@ function renderExistResult() {
       // the fish itself: a photo of each possible sex here, and the same fish swimming in the aquarium
       const photos = el('div', { className: 'exist-photos' });
       for (const sx of ok) {
-        const fish = exampleFish(species, r.bySex[sx].example, sx, { id: `preview-${sx}-11`, seed: 11 });
+        const fish = builtFish(sx, 0);
         const p = phenotype(species, fish, { ageDays: 365 });
         const img = thumbImg(p);
         img.title = 'Mostrar no aquário';
         img.addEventListener('click', () => { if (!state.preview) { exist.auto = true; openPreview(); } setPick(fish.id); });
-        photos.append(el('figure', {}, img, el('figcaption', { textContent: `${sx === 'male' ? '♂' : '♀'} ${hobbyName(p)}` })));
+        const buy = el('button', { type: 'button', className: 'small', textContent: sx === 'male' ? 'Comprar como pai' : 'Comprar como mãe' });
+        buy.addEventListener('click', () => buyBuilt(sx));
+        const codeBox = el('div', { className: 'exist-codebox' });
+        const code = el('button', { type: 'button', className: 'ghost small', textContent: 'Código' });
+        code.addEventListener('click', () => saveBuiltCode(sx, codeBox));
+        photos.append(el('figure', {}, img, el('figcaption', { textContent: `${sx === 'male' ? '♂' : '♀'} ${hobbyName(p)}` }),
+          el('div', { className: 'exist-buy' }, buy, code), codeBox));
       }
       out.push(photos);
       if (exist.auto) openPreview(!!state.preview);

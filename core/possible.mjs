@@ -2,7 +2,8 @@
 // phenotype resolver that make every fish in the game, so what it says is what can be born. It looks for
 // a genotype that shows all the asked values at once (per sex), and when there is none it says why: a
 // trait with two values, a value no gene makes in that sex, or one gene hiding another (epistasis).
-import { founder, phenotype } from './engine.mjs';
+import { founder, founderLoad, founderPolygenes, phenotype } from './engine.mjs';
+import { deriveSeed } from './rng.mjs';
 import { locusEffects, validateSpecies, yLocus } from './species.mjs';
 
 const MAX_COMBOS = 20000;
@@ -220,6 +221,11 @@ function showExample(species, found, sex, want) {
       if (quiet) fancy[locus.id] = [quiet, quiet];
     }
   }
+  // the species' own show background (e.g. a delta tail) where the breeder did not ask about that trait
+  for (const [id, pair] of Object.entries(species.showBackground ?? {})) {
+    const hit = lociOf(species).find(({ locus }) => locus.id === id);
+    if (hit && !found.alleles[id] && !locusEffects(hit.locus).some(e => asked.has(e.trait))) fancy[id] = pair;
+  }
   const candidates = [{ ...fancy, ...spread, ...found.alleles }, { ...spread, ...fancy, ...found.alleles }, { ...fancy, ...found.alleles }, found.alleles];
   // keep the found genotype's own choices for loci it set; let the background add the rest
   for (const alleles of [{ ...fancy, ...spread, ...pickChanged(found.alleles) }, { ...fancy, ...pickChanged(found.alleles) }, ...candidates]) {
@@ -236,6 +242,22 @@ function pickChanged(alleles) {
 /** A founder-like fish of an example genotype (for previews); deterministic by `seed`. */
 export function exampleFish(species, example, sex, { id = 'preview', seed = 1 } = {}) {
   return founder(species, { id, sex: sex === 'male' ? 'XY' : 'XX', yPattern: sex === 'male' ? example.y ?? undefined : undefined, alleles: example.alleles, devSeed: seed });
+}
+
+/**
+ * A fish you could buy with that genotype: like any founder from a dealer it carries its own hidden
+ * load (founderLoad) and draws its polygenes from a line profile, unless that would lose an asked value
+ * (then the example's polygenes stay). Deterministic by `seed`; checked with phenotype().
+ */
+export function founderFor(species, example, sex, want, { id, seed = 1, profile = null } = {}) {
+  const load = founderLoad(species, deriveSeed(seed, 'load'));
+  const poly = profile ? founderPolygenes(species, profile, deriveSeed(seed, 'poly')) : {};
+  const tries = [{ ...example.alleles, ...poly, ...load }, { ...poly, ...example.alleles, ...load }, { ...example.alleles, ...load }, example.alleles];
+  for (const alleles of tries) {
+    const fish = founder(species, { id, sex: sex === 'male' ? 'XY' : 'XX', yPattern: sex === 'male' ? example.y ?? undefined : undefined, alleles, devSeed: seed });
+    if (shows(phenotype(species, fish, { ageDays: 365 }), want)) return fish;
+  }
+  return exampleFish(species, example, sex, { id, seed });
 }
 
 /**
